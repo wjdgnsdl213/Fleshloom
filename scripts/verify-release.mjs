@@ -16,6 +16,8 @@ const startupArtPaths = [
   'assets/art/characters/carrier-09.png',
   'assets/art/characters/drifter.png',
   'assets/art/loop/living-tether-tile.png',
+  'assets/art/characters/animation/carrier-walk-sheet-v1.webp',
+  'assets/art/characters/animation/drifter-walk-sheet-v1.webp',
 ];
 const startupBudgetBytes = 6 * 1024 * 1024;
 

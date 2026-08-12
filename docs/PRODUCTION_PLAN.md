@@ -38,7 +38,7 @@ Internal release target: 2026-08-25
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Manual gate pending |
-| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | In progress |
+| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | P7-1 verification |
 
 ## Workstream contracts
 
@@ -167,3 +167,13 @@ Internal release target: 2026-08-25
 - Added `docs/EVOLUTION_PATH.md` as the owner-editable source for the complete in-run evolution flow: XP thresholds, eleven permanent mutations, four temporary imprints, Apex prerequisites, timed enemy escalation, armored Drifter layers, and Warden disassembly stages.
 - Clearly separated implemented mechanics from missing visual body evolution and added blank tables for Carrier stage silhouettes, combination ideas, and owner decisions.
 - Next: audit the approved styleframe at original resolution, then replace whole-sprite drifting with authored gait deformation for Carrier and every ordinary enemy family.
+
+### 2026-08-12 — P7-1 authored locomotion implemented
+
+- Re-inspected the approved styleframe at original resolution and locked grounded limb contact, low three-quarter top-down posture, restrained black/brown/ivory material, and species-specific weight as acceptance signals.
+- Used the built-in image generation workflow to create eight exact 2×2 gait sheets: Carrier, Drifter, armored Drifter, Rusher, Watcher, Cutter, Mimic, and Elite Husk. Chroma sources, runtime alpha WebP sheets, prompt structure, and validation are recorded under `references/generated/production-art-v4/`.
+- Replaced elapsed-time whole-bitmap bobbing with distance-driven four-pose animation. The gait pauses on an authored planted frame while the actor is stationary and advances only when its simulation position changes.
+- Each species owns a different stride distance and authored cadence; gait phase also drives restrained roll, compression, lift, and contact-shadow weight instead of acting as a cosmetic texture flip.
+- Startup waits only for the new 114KiB Carrier and 139KiB Drifter sheets; later species animation sheets remain deferred.
+- Verification: final `npm run release:verify` passes 39 files/331 tests, ESLint, strict TypeScript, production build, 20 public-file copies, base-path checks, and a 5.54MiB startup-art payload under the 6MiB budget.
+- Next: rebuild the living tether and capture contraction from the styleframe's braided black-red strands, ivory hook rhythm, and radial inward pull.

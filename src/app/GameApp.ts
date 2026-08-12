@@ -1745,8 +1745,10 @@ export class GameApp {
         ...this.enemies.map((enemy): PlaygroundEnemyView => {
           const snapshot = enemy.snapshot;
           return {
+            id: snapshot.id,
             archetype: snapshot.archetype,
             position: snapshot.position,
+            velocity: snapshot.velocity,
             facing: snapshot.facing,
             behaviorState: snapshot.behaviorState,
             lockedTarget: snapshot.lockedTarget,
@@ -1761,8 +1763,10 @@ export class GameApp {
         ...this.cutters.map((enemy): PlaygroundEnemyView => {
           const snapshot = enemy.snapshot;
           return {
+            id: snapshot.id,
             archetype: 'cutter',
             position: snapshot.position,
+            velocity: snapshot.velocity,
             facing: snapshot.facing,
             behaviorState: snapshot.state,
             lockedTarget: snapshot.lockedMidpoint,
@@ -1774,8 +1778,10 @@ export class GameApp {
         ...this.mimics.map((enemy): PlaygroundEnemyView => {
           const snapshot = enemy.snapshot;
           return {
+            id: snapshot.id,
             archetype: 'mimic',
             position: snapshot.position,
+            velocity: snapshot.velocity,
             facing: snapshot.facing,
             behaviorState: snapshot.behaviorState,
             lockedTarget: null,
@@ -1787,8 +1793,10 @@ export class GameApp {
         ...this.eliteHusks.map((enemy): PlaygroundEnemyView => {
           const snapshot = enemy.snapshot;
           return {
+            id: snapshot.id,
             archetype: 'elite-husk',
             position: snapshot.position,
+            velocity: snapshot.velocity,
             facing: snapshot.facing,
             behaviorState: snapshot.exposed ? 'exposed' : 'armored',
             lockedTarget: null,

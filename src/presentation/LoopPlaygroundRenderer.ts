@@ -4,6 +4,7 @@ import {
   Graphics,
   MeshRope,
   Point,
+  Rectangle,
   Sprite,
   Texture,
   TilingSprite,
@@ -32,6 +33,12 @@ import type {
 } from '../game/loop/LoopPath';
 import type { Camera2DSnapshot } from '../game/world/Camera2D';
 import { ART_ASSET_URLS } from './AssetManifest';
+import {
+  advanceWalkDistance,
+  sampleWalkCycle,
+  WALK_CYCLE_TUNING,
+  type WalkCycleSample,
+} from './Locomotion';
 
 const TETHER_ROPE_POINT_COUNT = 64;
 const TETHER_ROPE_SCALE = 0.059;
@@ -41,6 +48,7 @@ const ASPHALT_TILE_SCALE = 0.58;
 const WORLD_BARRIER_INSET = 34;
 const WORLD_BARRIER_LENGTH = 92;
 const WORLD_BARRIER_DEPTH = 34;
+const EMPTY_WALK_TEXTURES: readonly Texture[] = Object.freeze([]);
 
 interface EnemySpriteTuning {
   readonly anchorY: number;
@@ -84,8 +92,10 @@ const DRIFTER_FALLBACK_TUNING: Record<
 };
 
 export interface PlaygroundEnemyView {
+  readonly id: string;
   readonly archetype: FullRunEnemyArchetype;
   readonly position: Vec2;
+  readonly velocity: Vec2;
   readonly facing: Vec2;
   readonly behaviorState: string;
   readonly lockedTarget: Vec2 | null;
@@ -196,11 +206,21 @@ export class LoopPlaygroundRenderer {
   private backgroundTexture: Texture | null = null;
   private asphaltTexture: Texture | null = null;
   private carrierTexture: Texture | null = null;
+  private carrierWalkTextures: readonly Texture[] = [];
   private drifterTexture: Texture | null = null;
   private armoredDrifterTexture: Texture | null = null;
+  private armoredDrifterWalkTextures: readonly Texture[] = [];
   private readonly enemyTextures: Partial<
     Record<FullRunEnemyArchetype, Texture>
   > = {};
+  private readonly enemyWalkTextures: Partial<
+    Record<FullRunEnemyArchetype, readonly Texture[]>
+  > = {};
+  private readonly enemyWalkStates = new Map<
+    string,
+    { x: number; y: number; distance: number; lastSeenFrame: number }
+  >();
+  private actorRenderFrame = 0;
   private wardenTexture: Texture | null = null;
   private tetherRope: MeshRope | null = null;
   private startupAssetLoadPromise: Promise<void> | null = null;
@@ -210,6 +230,9 @@ export class LoopPlaygroundRenderer {
   private lastPlayerX = Number.NaN;
   private lastPlayerY = Number.NaN;
   private playerFacing = -0.48;
+  private carrierWalkX = Number.NaN;
+  private carrierWalkY = Number.NaN;
+  private carrierWalkDistance = 0;
 
   public constructor() {
     this.asphaltTile.visible = false;
@@ -318,19 +341,24 @@ export class LoopPlaygroundRenderer {
     const asphaltTile = await this.loadTextureSafely(
       ART_ASSET_URLS.asphaltTile,
     );
-    const [background, carrier, drifter, tether] = await Promise.all([
+    const [background, carrier, drifter, tether, carrierWalk, drifterWalk] =
+      await Promise.all([
       asphaltTile === null
         ? this.loadTextureSafely(ART_ASSET_URLS.background)
         : Promise.resolve(null),
       this.loadTextureSafely(ART_ASSET_URLS.carrier),
       this.loadTextureSafely(ART_ASSET_URLS.drifter),
       this.loadTextureSafely(ART_ASSET_URLS.tether),
+      this.loadTextureSafely(ART_ASSET_URLS.carrierWalk),
+      this.loadTextureSafely(ART_ASSET_URLS.drifterWalk),
     ]);
 
     this.backgroundTexture = background;
     this.asphaltTexture = asphaltTile;
     this.carrierTexture = carrier;
     this.drifterTexture = drifter;
+    this.carrierWalkTextures = this.createWalkFrames(carrierWalk);
+    this.enemyWalkTextures.drifter = this.createWalkFrames(drifterWalk);
 
     if (drifter !== null) {
       this.enemyTextures.drifter = drifter;
@@ -372,8 +400,21 @@ export class LoopPlaygroundRenderer {
   }
 
   private async loadDeferredAssetsSafely(): Promise<void> {
-    const [armoredDrifter, rusher, watcher, cutter, mimic, eliteHusk, warden] =
-      await Promise.all([
+    const [
+      armoredDrifter,
+      rusher,
+      watcher,
+      cutter,
+      mimic,
+      eliteHusk,
+      warden,
+      armoredDrifterWalk,
+      rusherWalk,
+      watcherWalk,
+      cutterWalk,
+      mimicWalk,
+      eliteHuskWalk,
+    ] = await Promise.all([
         this.loadTextureSafely(ART_ASSET_URLS.armoredDrifter),
         this.loadTextureSafely(ART_ASSET_URLS.rusher),
         this.loadTextureSafely(ART_ASSET_URLS.watcher),
@@ -381,10 +422,24 @@ export class LoopPlaygroundRenderer {
         this.loadTextureSafely(ART_ASSET_URLS.mimic),
         this.loadTextureSafely(ART_ASSET_URLS.eliteHusk),
         this.loadTextureSafely(ART_ASSET_URLS.warden),
+        this.loadTextureSafely(ART_ASSET_URLS.armoredDrifterWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.rusherWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.watcherWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.cutterWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.mimicWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.eliteHuskWalk),
       ]);
 
     this.armoredDrifterTexture = armoredDrifter;
     this.wardenTexture = warden;
+    this.armoredDrifterWalkTextures =
+      this.createWalkFrames(armoredDrifterWalk);
+    this.enemyWalkTextures.rusher = this.createWalkFrames(rusherWalk);
+    this.enemyWalkTextures.watcher = this.createWalkFrames(watcherWalk);
+    this.enemyWalkTextures.cutter = this.createWalkFrames(cutterWalk);
+    this.enemyWalkTextures.mimic = this.createWalkFrames(mimicWalk);
+    this.enemyWalkTextures['elite-husk'] =
+      this.createWalkFrames(eliteHuskWalk);
 
     if (rusher !== null) {
       this.enemyTextures.rusher = rusher;
@@ -412,6 +467,35 @@ export class LoopPlaygroundRenderer {
     } catch {
       return null;
     }
+  }
+
+  private createWalkFrames(sheet: Texture | null): readonly Texture[] {
+    if (sheet === null) {
+      return Object.freeze([]);
+    }
+
+    const frameWidth = sheet.width / 2;
+    const frameHeight = sheet.height / 2;
+    return Object.freeze(
+      [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ].map(
+        ([column, row], index) =>
+          new Texture({
+            source: sheet.source,
+            label: `${sheet.label ?? 'walk'}-frame-${index}`,
+            frame: new Rectangle(
+              column! * frameWidth,
+              row! * frameHeight,
+              frameWidth,
+              frameHeight,
+            ),
+          }),
+      ),
+    );
   }
 
   private drawEnvironment(state: PlaygroundRenderState): void {
@@ -489,6 +573,7 @@ export class LoopPlaygroundRenderer {
     const graphics = this.actors.clear();
     const playerFacing = this.playerFacingAngle(state);
     let visibleEnemySpriteCount = 0;
+    this.actorRenderFrame += 1;
 
     this.updateWardenBitmap(state.warden, state.elapsed);
     this.drawWarden(
@@ -503,11 +588,13 @@ export class LoopPlaygroundRenderer {
       if (!enemy.alive) {
         continue;
       }
-
       this.drawEnemyTelegraph(graphics, enemy, state.elapsed);
-      const texture = this.enemyTextureFor(enemy);
+      const walk = this.enemyWalkSample(enemy);
+      const texture =
+        this.enemyWalkTexturesFor(enemy)[walk.frame] ??
+        this.enemyTextureFor(enemy);
       if (texture !== null) {
-        this.drawDrifterSpriteUnderlay(graphics, enemy);
+        this.drawDrifterSpriteUnderlay(graphics, enemy, walk);
         const sprite = this.ensureEnemySprite(visibleEnemySpriteCount);
         this.updateEnemySprite(
           sprite,
@@ -515,10 +602,17 @@ export class LoopPlaygroundRenderer {
           enemy,
           state.player,
           state.elapsed,
+          walk,
         );
         visibleEnemySpriteCount += 1;
       } else {
         this.drawDrifter(graphics, enemy, state.player, state.elapsed);
+      }
+    }
+
+    for (const [id, walkState] of this.enemyWalkStates) {
+      if (walkState.lastSeenFrame !== this.actorRenderFrame) {
+        this.enemyWalkStates.delete(id);
       }
     }
 
@@ -985,6 +1079,7 @@ export class LoopPlaygroundRenderer {
     enemy: PlaygroundEnemyView,
     player: Vec2,
     elapsed: number,
+    walk: WalkCycleSample,
   ): void {
     const staggerStrength = Math.min(
       1,
@@ -992,8 +1087,11 @@ export class LoopPlaygroundRenderer {
     );
     const staggerTwitch =
       Math.sin(elapsed * 47 + enemy.phase * 5.1) * 0.075 * staggerStrength;
+    const locomotionRoll = walk.moving ? walk.passing * 0.038 : 0;
     const twitch =
-      Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.025 + staggerTwitch;
+      Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.012 +
+      locomotionRoll +
+      staggerTwitch;
     const angle =
       enemy.archetype === 'drifter'
         ? Math.atan2(
@@ -1014,13 +1112,20 @@ export class LoopPlaygroundRenderer {
     sprite.texture = texture;
     sprite.anchor.set(0.5, tuning.anchorY);
     sprite.position.set(
-      enemy.position.x - enemy.facing.y * staggerTwitch * 16,
-      enemy.position.y + enemy.facing.x * staggerTwitch * 16,
+      enemy.position.x -
+        enemy.facing.y * (staggerTwitch * 16 + walk.contact * 0.8),
+      enemy.position.y +
+        enemy.facing.x * staggerTwitch * 16 -
+        Math.abs(walk.passing) * 1.1,
     );
     sprite.rotation = angle + Math.PI * 0.5 + twitch;
     sprite.scale.set(
-      baseScale * tuning.scaleX * (1 - breath * 0.45 + staggerStrength * 0.04),
-      baseScale * tuning.scaleY * (1 + breath - staggerStrength * 0.06),
+      baseScale *
+        tuning.scaleX *
+        (1 - breath * 0.24 + Math.abs(walk.passing) * 0.018 + staggerStrength * 0.04),
+      baseScale *
+        tuning.scaleY *
+        (1 + breath * 0.5 - Math.abs(walk.passing) * 0.028 - staggerStrength * 0.06),
     );
     sprite.alpha = 0.98;
     sprite.tint =
@@ -1030,6 +1135,46 @@ export class LoopPlaygroundRenderer {
           ? this.productionEnemyTint(enemy.archetype, enemy.behaviorState)
           : this.drifterFallbackTint(enemy.archetype, enemy.behaviorState);
     sprite.visible = true;
+  }
+
+  private enemyWalkTexturesFor(
+    enemy: PlaygroundEnemyView,
+  ): readonly Texture[] {
+    if (
+      enemy.archetype === 'drifter' &&
+      enemy.captureProfile === 'armored' &&
+      enemy.armored === true &&
+      this.armoredDrifterWalkTextures.length > 0
+    ) {
+      return this.armoredDrifterWalkTextures;
+    }
+    return this.enemyWalkTextures[enemy.archetype] ?? EMPTY_WALK_TEXTURES;
+  }
+
+  private enemyWalkSample(enemy: PlaygroundEnemyView): WalkCycleSample {
+    const previous = this.enemyWalkStates.get(enemy.id);
+    const displacement =
+      previous === undefined
+        ? 0
+        : Math.hypot(
+            enemy.position.x - previous.x,
+            enemy.position.y - previous.y,
+          );
+    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+    const tuning = WALK_CYCLE_TUNING[enemy.archetype];
+    const distance = advanceWalkDistance(
+      previous?.distance ?? enemy.phase * tuning.distancePerFrame * 4,
+      displacement,
+      1,
+      0.02,
+    );
+    this.enemyWalkStates.set(enemy.id, {
+      x: enemy.position.x,
+      y: enemy.position.y,
+      distance,
+      lastSeenFrame: this.actorRenderFrame,
+    });
+    return sampleWalkCycle(distance, speed, tuning);
   }
 
   private enemyTextureFor(enemy: PlaygroundEnemyView): Texture | null {
@@ -1382,8 +1527,27 @@ export class LoopPlaygroundRenderer {
 
     const speed = Math.hypot(state.playerVelocity.x, state.playerVelocity.y);
     const movement = Math.min(1, speed / 210);
-    const stride = Math.sin(state.elapsed * (3.1 + movement * 8.6));
-    const breath = stride * (0.018 + movement * 0.026);
+    const displacement =
+      Number.isFinite(this.carrierWalkX) && Number.isFinite(this.carrierWalkY)
+        ? Math.hypot(
+            state.player.x - this.carrierWalkX,
+            state.player.y - this.carrierWalkY,
+          )
+        : 0;
+    this.carrierWalkDistance = advanceWalkDistance(
+      this.carrierWalkDistance,
+      displacement,
+      1,
+      0.02,
+    );
+    this.carrierWalkX = state.player.x;
+    this.carrierWalkY = state.player.y;
+    const walk = sampleWalkCycle(
+      this.carrierWalkDistance,
+      speed,
+      WALK_CYCLE_TUNING.carrier,
+    );
+    const breath = Math.sin(state.elapsed * 2.2) * 0.008;
     const loopTension = Math.min(1, state.loopSamples.length / 18);
     const captureKick =
       state.closureEcho === null || state.closureEcho.captured <= 0
@@ -1396,18 +1560,24 @@ export class LoopPlaygroundRenderer {
                 PLAYGROUND_TUNING.closureDurationSeconds,
             )) *
           0.12;
+    const activeTexture =
+      this.carrierWalkTextures[walk.frame] ?? this.carrierTexture;
     const baseScale =
-      (PLAYGROUND_TUNING.playerRadius * 5.7) / this.carrierTexture.height;
-    this.playerSprite.texture = this.carrierTexture;
+      (PLAYGROUND_TUNING.playerRadius * 5.7) / activeTexture.height;
+    this.playerSprite.texture = activeTexture;
     this.playerSprite.position.set(
-      state.player.x - Math.sin(facingAngle) * stride * movement * 1.8,
-      state.player.y + Math.cos(facingAngle) * stride * movement * 1.8,
+      state.player.x - Math.sin(facingAngle) * walk.contact * movement * 1.4,
+      state.player.y +
+        Math.cos(facingAngle) * walk.contact * movement * 1.4 -
+        Math.abs(walk.passing) * 1.2,
     );
     this.playerSprite.rotation =
-      facingAngle + Math.PI * 0.5 + stride * movement * 0.025;
+      facingAngle + Math.PI * 0.5 + walk.passing * movement * 0.032;
     this.playerSprite.scale.set(
-      baseScale * (1 - breath * 0.38 + captureKick),
-      baseScale * (1 + breath - captureKick * 0.5 + loopTension * 0.025),
+      baseScale *
+        (1 - breath * 0.3 + Math.abs(walk.passing) * 0.016 + captureKick),
+      baseScale *
+        (1 + breath * 0.5 - Math.abs(walk.passing) * 0.026 - captureKick * 0.5 + loopTension * 0.025),
     );
     this.playerSprite.alpha = 1;
     this.playerSprite.tint =
@@ -1424,13 +1594,14 @@ export class LoopPlaygroundRenderer {
   private drawDrifterSpriteUnderlay(
     graphics: Graphics,
     enemy: PlaygroundEnemyView,
+    walk: WalkCycleSample,
   ): void {
     graphics
       .ellipse(
-        enemy.position.x,
-        enemy.position.y + enemy.radius * 0.68,
-        enemy.radius * 1.32,
-        enemy.radius * 0.48,
+        enemy.position.x - enemy.facing.y * walk.contact * enemy.radius * 0.08,
+        enemy.position.y + enemy.radius * (0.68 + Math.abs(walk.passing) * 0.05),
+        enemy.radius * (1.22 + Math.abs(walk.contact) * 0.16),
+        enemy.radius * (0.42 + Math.abs(walk.passing) * 0.08),
       )
       .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.58 });
     graphics.circle(

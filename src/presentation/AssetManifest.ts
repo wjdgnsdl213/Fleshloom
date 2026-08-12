@@ -11,6 +11,16 @@ export const ART_ASSET_PATHS = {
   eliteHusk: 'assets/art/enemies/elite-husk.png',
   warden: 'assets/art/boss/warden.png',
   tether: 'assets/art/loop/living-tether-tile.png',
+  carrierWalk: 'assets/art/characters/animation/carrier-walk-sheet-v1.webp',
+  drifterWalk: 'assets/art/characters/animation/drifter-walk-sheet-v1.webp',
+  armoredDrifterWalk:
+    'assets/art/characters/animation/armored-drifter-walk-sheet-v1.webp',
+  rusherWalk: 'assets/art/characters/animation/rusher-walk-sheet-v1.webp',
+  watcherWalk: 'assets/art/characters/animation/watcher-walk-sheet-v1.webp',
+  cutterWalk: 'assets/art/characters/animation/cutter-walk-sheet-v1.webp',
+  mimicWalk: 'assets/art/characters/animation/mimic-walk-sheet-v1.webp',
+  eliteHuskWalk:
+    'assets/art/characters/animation/elite-husk-walk-sheet-v1.webp',
 } as const;
 
 export type ArtAssetKey = keyof typeof ART_ASSET_PATHS;
@@ -20,6 +30,8 @@ export const STARTUP_ART_ASSET_KEYS = [
   'carrier',
   'drifter',
   'tether',
+  'carrierWalk',
+  'drifterWalk',
 ] as const satisfies readonly ArtAssetKey[];
 
 export const DEFERRED_ART_ASSET_KEYS = [
@@ -30,6 +42,12 @@ export const DEFERRED_ART_ASSET_KEYS = [
   'mimic',
   'eliteHusk',
   'warden',
+  'armoredDrifterWalk',
+  'rusherWalk',
+  'watcherWalk',
+  'cutterWalk',
+  'mimicWalk',
+  'eliteHuskWalk',
 ] as const satisfies readonly ArtAssetKey[];
 
 export const FALLBACK_ART_ASSET_KEYS = [

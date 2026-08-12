@@ -172,3 +172,10 @@ Open risks / decisions requested:
 - Agent and task: the primary agent traced current progression, waves, enemy layers, and Warden rules into one Korean owner-editable document. No delegation was used.
 - Result: `docs/EVOLUTION_PATH.md` distinguishes implemented rules from missing visual evolution, records exact ranks/times/values, and leaves structured spaces for the owner to define body changes and combination ideas.
 - Visual direction: the approved styleframe was re-inspected at original resolution. P7 will treat grounded gait, limb phase, braided black-red tether, ivory hook segmentation, and inward radial capture pull as explicit fidelity gates rather than general mood references.
+
+### 2026-08-12 / P7-1 authored locomotion
+
+- Agent and task: the primary agent used the imagegen skill's built-in workflow to produce eight actor-specific 2×2 gait sheets, processed their chroma keys into alpha WebP, integrated them, and added pure distance-driven animation rules. No delegation was used.
+- Result: Carrier, every mobile ordinary species, armored Drifter, and Elite Husk now alternate real contact/passing poses instead of translating one image. Stationary aim, telegraph, and stagger states hold a planted frame.
+- Performance: all eight runtime sheets total roughly 1.15MiB. Only Carrier/Drifter join startup; the other six retain deferred loading.
+- Verification: pure locomotion/manifest tests pass inside the final `npm run release:verify` gate: 39 files/331 tests, lint, strict TypeScript, build, public-copy/base-path checks, and 5.54MiB startup art. The managed browser limitation still prevents an honest live-motion screenshot/video pass.

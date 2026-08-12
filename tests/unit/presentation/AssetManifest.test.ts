@@ -29,6 +29,8 @@ describe('asset manifest', () => {
       'carrier',
       'drifter',
       'tether',
+      'carrierWalk',
+      'drifterWalk',
     ]);
     expect(STARTUP_ART_ASSET_KEYS).not.toContain('armoredDrifter');
     expect(STARTUP_ART_ASSET_KEYS).not.toContain('warden');
