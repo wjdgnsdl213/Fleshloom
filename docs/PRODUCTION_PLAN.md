@@ -38,6 +38,7 @@ Internal release target: 2026-08-25
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Manual gate pending |
+| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | In progress |
 
 ## Workstream contracts
 
@@ -160,3 +161,9 @@ Internal release target: 2026-08-25
 - Replaced the stale prototype README and generic checklist with the current Korean production summary and an exact Chrome/Edge/mobile, full-run, audio, accessibility, and deployment QA matrix.
 - Verification: final `npm run release:verify` passes 38 files/327 tests, ESLint, strict TypeScript, production build, 12 public-file copies, 12 index references, and the startup payload budget.
 - The browser-control skill was invoked for live QA but reported `No browser is available`. P6 remains at `Manual gate pending` until the three-device matrix, complete victory/death routes, and public signed-out smoke test are recorded.
+
+### 2026-08-12 — P7-0 evolution source document complete
+
+- Added `docs/EVOLUTION_PATH.md` as the owner-editable source for the complete in-run evolution flow: XP thresholds, eleven permanent mutations, four temporary imprints, Apex prerequisites, timed enemy escalation, armored Drifter layers, and Warden disassembly stages.
+- Clearly separated implemented mechanics from missing visual body evolution and added blank tables for Carrier stage silhouettes, combination ideas, and owner decisions.
+- Next: audit the approved styleframe at original resolution, then replace whole-sprite drifting with authored gait deformation for Carrier and every ordinary enemy family.

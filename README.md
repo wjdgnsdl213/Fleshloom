@@ -36,7 +36,8 @@ npm run release:verify
 1. `docs/GAME_DESIGN.md`
 2. `docs/PRODUCTION_PLAN.md`
 3. `docs/QA_CHECKLIST.md`
-4. `docs/VISUAL_BIBLE.md`
-5. `docs/ARCHITECTURE.md`
-6. `docs/DECISIONS.md`
-7. `docs/CODEX_COLLABORATION.md`
+4. `docs/EVOLUTION_PATH.md`
+5. `docs/VISUAL_BIBLE.md`
+6. `docs/ARCHITECTURE.md`
+7. `docs/DECISIONS.md`
+8. `docs/CODEX_COLLABORATION.md`

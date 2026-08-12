@@ -166,3 +166,9 @@ Open risks / decisions requested:
 - Result: runtime art paths are deployment-base aware, so root and GitHub repository sub-path hosting use the same build. Startup now waits for 5.29MiB of first-input art rather than every 16.17MiB public asset; later actors load after the canvas becomes interactive and procedural fallbacks remain available.
 - Automation: `npm run release:verify` passes 38 files/327 tests, ESLint, strict TypeScript, production build, public-to-dist copy checks, index/bundle path checks, and the 6MiB startup-art budget. The Korean README and browser/device/full-run QA matrix now describe the actual production build.
 - Open risk: the browser-control skill reported that no browser is available. Chrome, Edge, phone touch, live Web Audio, 10–12 minute victory/death routes, and public/private-session smoke tests remain an explicit owner/device gate rather than a claimed automated pass.
+
+### 2026-08-12 / P7-0 evolution documentation
+
+- Agent and task: the primary agent traced current progression, waves, enemy layers, and Warden rules into one Korean owner-editable document. No delegation was used.
+- Result: `docs/EVOLUTION_PATH.md` distinguishes implemented rules from missing visual evolution, records exact ranks/times/values, and leaves structured spaces for the owner to define body changes and combination ideas.
+- Visual direction: the approved styleframe was re-inspected at original resolution. P7 will treat grounded gait, limb phase, braided black-red tether, ivory hook segmentation, and inward radial capture pull as explicit fidelity gates rather than general mood references.
