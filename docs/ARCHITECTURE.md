@@ -29,6 +29,7 @@ src/
   core/            math, geometry, time, random, typed event primitives
   input/           keyboard, pointer, touch -> InputIntent
   game/
+    world/         finite world and renderer-independent camera tracking
     player/        movement, HP, biomass
     loop/          anchor, samples, closure, snap, capture resolver
     enemies/       behaviors and hit/capture state
@@ -81,6 +82,14 @@ Exact event fields can evolve, but input, simulation, and presentation remain se
 Geometry functions remain deterministic and unit-tested. Rendering may interpolate but cannot alter the polygon used for capture.
 
 `LoopPath.preview()` is the single source of truth for the currently selected polygon, closure kind, snap point, validity, and area. `complete()` returns that same candidate and clears the path. Presentation must render the preview result rather than reconstructing a different polygon.
+
+## World and camera contract
+
+- Simulation positions use the fixed quarantine-world coordinate system and never depend on canvas dimensions.
+- `Camera2D` is a pure model that owns viewport size, a soft player dead zone, edge clamping, and resize continuity.
+- `GameApp` supplies camera-local spawn bounds while enemy and projectile movement remain clamped to the full world.
+- `LoopPlaygroundRenderer` translates one Pixi world container by the inverse camera origin. Weather, HUD, decisions, and touch controls stay in screen space.
+- The Warden owns a local encounter rectangle derived at transition time; both player movement and camera origin are constrained to that rectangle until results.
 
 ## Performance budget
 

@@ -127,3 +127,10 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Status: accepted
 - Decision: the six M2 mutations remain the only draft pool through 3:00. Four lineage mutations unlock at the checkpoint. After all four imprint families have been activated and all four lineage mutations reach rank one, Fourfold Hunt is guaranteed in the next eligible draft.
 - Reason: early choices stay readable and regression-stable, while the apex remains achievable rather than dependent on one lucky random roll.
+
+## D-019 — Simulation uses a finite world and presentation-only camera
+
+- Date: 2026-08-12
+- Status: accepted
+- Decision: the quarantine district is a fixed 3,200×1,800 world. Player movement, loop geometry, enemies, projectiles, collision, and capture stay in world coordinates. A soft dead-zone camera only translates the Pixi world container; weather and DOM controls remain in viewport space. The Warden transition creates a bounded local arena around the encounter point.
+- Reason: movement can traverse a real place without coupling game rules to browser size, while resize behavior and boss framing remain deterministic.

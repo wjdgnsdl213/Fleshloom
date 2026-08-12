@@ -14,6 +14,11 @@ import {
 } from '../content/mutations';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
 import { PROGRESSION_BASELINE } from '../config/progression';
+import {
+  QUARANTINE_WORLD_BOUNDS,
+  QUARANTINE_WORLD_START,
+  WORLD_TUNING,
+} from '../config/world';
 import type { Vec2 } from '../core/geometry/vector';
 import { SeededRandom } from '../core/random/SeededRandom';
 import {
@@ -57,6 +62,7 @@ import {
   type RunScene,
 } from '../game/run/RunFlow';
 import { FullRunWaveDirector } from '../game/waves/FullRunWaveDirector';
+import { Camera2D } from '../game/world/Camera2D';
 import {
   TutorialDirector,
   type TutorialStep,
@@ -144,11 +150,6 @@ interface MutableClosureEcho {
   age: number;
 }
 
-const PLAYER_FOOTER_SAFE_AREA = {
-  compact: 140,
-  wide: 122,
-} as const;
-
 const RUN_SEED = 0xf1e5_1009;
 interface EnemySeed {
   readonly archetype: EnemyArchetype;
@@ -189,6 +190,14 @@ export class GameApp {
   private readonly app = new Application();
   private readonly audio = new PlaygroundAudio();
   private readonly renderer = new LoopPlaygroundRenderer();
+  private readonly camera = new Camera2D({
+    bounds: QUARANTINE_WORLD_BOUNDS,
+    viewportWidth: 1,
+    viewportHeight: 1,
+    deadZoneRatioX: WORLD_TUNING.cameraDeadZoneRatioX,
+    deadZoneRatioY: WORLD_TUNING.cameraDeadZoneRatioY,
+    followSharpness: WORLD_TUNING.cameraFollowSharpness,
+  });
   private readonly keyboard = new KeyboardInputAdapter();
   private readonly pointer = new PointerInputAdapter();
   private readonly runFlow = new RunFlow(RUN_SEED);
@@ -219,6 +228,7 @@ export class GameApp {
   private eliteHusks: EliteHuskModel[] = [];
   private projectiles: ProjectileModel[] = [];
   private warden: WardenModel | null = null;
+  private wardenArenaBounds: EnemyArenaBounds | null = null;
   private nextProjectileId = 1;
 
   private player = { x: 0, y: 0 };
@@ -233,7 +243,6 @@ export class GameApp {
   private lastStatusSignature = '';
   private closureReadyCue: LoopClosureKind | null = null;
   private started = false;
-  private coarsePointer = false;
   private lineageUnlocked = false;
   private apexQueued = false;
   private readonly gatheredImprints = new Set<EnemyImprintKind>();
@@ -254,9 +263,6 @@ export class GameApp {
 
     await this.renderer.loadAssets();
 
-    this.coarsePointer = window.matchMedia(
-      '(hover: none) and (pointer: coarse)',
-    ).matches;
     this.reducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches;
@@ -269,9 +275,12 @@ export class GameApp {
     this.renderer.attach(this.app.stage);
 
     this.player = {
-      x: this.app.screen.width * 0.5,
-      y: this.app.screen.height * 0.52,
+      x: QUARANTINE_WORLD_START.x,
+      y: QUARANTINE_WORLD_START.y,
     };
+    this.syncCameraViewport();
+    this.camera.setBounds(QUARANTINE_WORLD_BOUNDS);
+    this.camera.jumpTo(this.player);
     this.configureRunSeed(this.runFlow.snapshot.runSeed);
     this.playerVelocity = { x: 0, y: 0 };
     this.lineageUnlocked = false;
@@ -363,6 +372,8 @@ export class GameApp {
     this.eliteHusks = [];
     this.projectiles = [];
     this.warden = null;
+    this.wardenArenaBounds = null;
+    this.camera.setBounds(QUARANTINE_WORLD_BOUNDS);
     this.closureEcho = null;
     this.loopCutEcho = null;
     this.wardenAttackEcho = null;
@@ -512,11 +523,14 @@ export class GameApp {
   private beginWardenEncounter(): void {
     this.settleChoicesForRunTransition();
     this.runFlow.beginWarden();
+    this.wardenArenaBounds = this.createWardenArenaBounds();
+    this.camera.setBounds(this.wardenArenaBounds);
+    this.camera.jumpTo(this.player);
     this.warden = new WardenModel({ id: 'warden-prototype', phase: 0.36 });
     this.warden.begin();
     this.warden.step(0.001, {
       playerPosition: this.player,
-      bounds: this.enemyBounds(),
+      bounds: this.wardenArenaBounds,
     });
     this.audio.playWardenArrival();
     this.enemies = [];
@@ -769,10 +783,11 @@ export class GameApp {
     this.vitals.update(simulationDelta);
     this.imprint.update(simulationDelta);
     this.updatePlayer(simulationDelta, intent);
+    this.updateCamera(deltaSeconds);
     const wardenActions =
       this.warden?.step(simulationDelta, {
         playerPosition: this.player,
-        bounds: this.enemyBounds(),
+        bounds: this.wardenBounds(),
       }) ?? [];
     const combat =
       this.warden === null
@@ -864,21 +879,23 @@ export class GameApp {
       this.player.y += intent.moveY * distance;
     }
 
-    const padding = PLAYGROUND_TUNING.playerRadius + 24;
-    const bottomPadding = Math.max(
-      padding,
-      this.coarsePointer || this.app.screen.width <= 720
-        ? PLAYER_FOOTER_SAFE_AREA.compact
-        : PLAYER_FOOTER_SAFE_AREA.wide,
+    const bounds = this.playerMovementBounds();
+    const padding = Math.max(
+      PLAYGROUND_TUNING.playerRadius,
+      WORLD_TUNING.playerBoundaryPadding,
     );
-    this.player.x = Math.max(
-      padding,
-      Math.min(this.app.screen.width - padding, this.player.x),
-    );
-    this.player.y = Math.max(
-      padding,
-      Math.min(this.app.screen.height - bottomPadding, this.player.y),
-    );
+    const minX = bounds.minX + padding;
+    const maxX = bounds.maxX - padding;
+    const minY = bounds.minY + padding;
+    const maxY = bounds.maxY - padding;
+    this.player.x =
+      minX <= maxX
+        ? Math.max(minX, Math.min(maxX, this.player.x))
+        : (bounds.minX + bounds.maxX) / 2;
+    this.player.y =
+      minY <= maxY
+        ? Math.max(minY, Math.min(maxY, this.player.y))
+        : (bounds.minY + bounds.maxY) / 2;
 
     if (deltaSeconds > 0) {
       this.playerVelocity = {
@@ -1117,14 +1134,111 @@ export class GameApp {
   }
 
   private enemyBounds(): EnemyArenaBounds {
-    const footerClearance =
-      this.coarsePointer || this.app.screen.width <= 720 ? 136 : 72;
-    return {
-      minX: 0,
-      minY: 0,
-      maxX: this.app.screen.width,
-      maxY: Math.max(0, this.app.screen.height - footerClearance),
-    };
+    return QUARANTINE_WORLD_BOUNDS;
+  }
+
+  private playerMovementBounds(): EnemyArenaBounds {
+    return this.wardenArenaBounds ?? QUARANTINE_WORLD_BOUNDS;
+  }
+
+  private wardenBounds(): EnemyArenaBounds {
+    return this.wardenArenaBounds ?? QUARANTINE_WORLD_BOUNDS;
+  }
+
+  private syncCameraViewport(): void {
+    const width = Math.max(1, this.app.screen.width);
+    const height = Math.max(1, this.app.screen.height);
+    const camera = this.camera.snapshot;
+    if (
+      camera.viewportWidth !== width ||
+      camera.viewportHeight !== height
+    ) {
+      this.camera.resize(width, height);
+    }
+  }
+
+  private updateCamera(deltaSeconds: number): void {
+    this.syncCameraViewport();
+    this.camera.update(this.player, deltaSeconds);
+  }
+
+  private spawnBounds(): EnemyArenaBounds {
+    const camera = this.camera.snapshot;
+    const worldWidth =
+      QUARANTINE_WORLD_BOUNDS.maxX - QUARANTINE_WORLD_BOUNDS.minX;
+    const worldHeight =
+      QUARANTINE_WORLD_BOUNDS.maxY - QUARANTINE_WORLD_BOUNDS.minY;
+    const width = Math.min(
+      worldWidth,
+      Math.max(
+        WORLD_TUNING.minimumSpawnWidth,
+        camera.viewportWidth + WORLD_TUNING.spawnOverscan * 2,
+      ),
+    );
+    const height = Math.min(
+      worldHeight,
+      Math.max(
+        WORLD_TUNING.minimumSpawnHeight,
+        camera.viewportHeight + WORLD_TUNING.spawnOverscan * 2,
+      ),
+    );
+    return this.centeredWorldBounds(
+      {
+        x: camera.x + camera.viewportWidth / 2,
+        y: camera.y + camera.viewportHeight / 2,
+      },
+      width,
+      height,
+    );
+  }
+
+  private createWardenArenaBounds(): EnemyArenaBounds {
+    const worldWidth =
+      QUARANTINE_WORLD_BOUNDS.maxX - QUARANTINE_WORLD_BOUNDS.minX;
+    const worldHeight =
+      QUARANTINE_WORLD_BOUNDS.maxY - QUARANTINE_WORLD_BOUNDS.minY;
+    const width = Math.min(
+      worldWidth,
+      Math.max(
+        WORLD_TUNING.wardenArenaMinimumWidth,
+        this.app.screen.width + WORLD_TUNING.wardenArenaViewportPadding,
+      ),
+    );
+    const height = Math.min(
+      worldHeight,
+      Math.max(
+        WORLD_TUNING.wardenArenaMinimumHeight,
+        this.app.screen.height + WORLD_TUNING.wardenArenaViewportPadding,
+      ),
+    );
+    return this.centeredWorldBounds(this.player, width, height);
+  }
+
+  private centeredWorldBounds(
+    center: Vec2,
+    width: number,
+    height: number,
+  ): EnemyArenaBounds {
+    const minX = Math.max(
+      QUARANTINE_WORLD_BOUNDS.minX,
+      Math.min(
+        QUARANTINE_WORLD_BOUNDS.maxX - width,
+        center.x - width / 2,
+      ),
+    );
+    const minY = Math.max(
+      QUARANTINE_WORLD_BOUNDS.minY,
+      Math.min(
+        QUARANTINE_WORLD_BOUNDS.maxY - height,
+        center.y - height / 2,
+      ),
+    );
+    return Object.freeze({
+      minX,
+      minY,
+      maxX: minX + width,
+      maxY: minY + height,
+    });
   }
 
   private advanceWaves(deltaSeconds: number): void {
@@ -1155,7 +1269,7 @@ export class GameApp {
 
     const requests = this.waveDirector.step(deltaSeconds, {
       playerPosition: this.player,
-      bounds: this.enemyBounds(),
+      bounds: this.spawnBounds(),
       aliveCounts,
     });
 
@@ -1543,6 +1657,7 @@ export class GameApp {
   }
 
   private draw(loopPreview: LoopPreview | null): void {
+    this.syncCameraViewport();
     const activeImprint = this.imprint.snapshot.active?.kind ?? null;
     const projectionOrigin = this.loopPath.samples[0];
     const previewProjectionCount =
@@ -1566,6 +1681,8 @@ export class GameApp {
     this.renderer.render({
       width: this.app.screen.width,
       height: this.app.screen.height,
+      worldBounds: QUARANTINE_WORLD_BOUNDS,
+      camera: this.camera.snapshot,
       elapsed: this.presentationElapsed,
       player: this.player,
       warden: this.warden?.snapshot ?? null,
@@ -1878,9 +1995,9 @@ export class GameApp {
     this.waveDirector.reset();
     this.tutorial.reset();
     this.loopPath = this.createLoopPath();
-    this.resetEnemies();
     this.projectiles = [];
     this.warden = null;
+    this.wardenArenaBounds = null;
     this.nextProjectileId = 1;
     this.choiceClock.reset();
     this.keyboard.reset();
@@ -1893,10 +2010,14 @@ export class GameApp {
     this.feedbackState = 'idle';
     this.feedbackTime = 0;
     this.player = {
-      x: this.app.screen.width * 0.5,
-      y: this.app.screen.height * 0.52,
+      x: QUARANTINE_WORLD_START.x,
+      y: QUARANTINE_WORLD_START.y,
     };
     this.playerVelocity = { x: 0, y: 0 };
+    this.camera.setBounds(QUARANTINE_WORLD_BOUNDS);
+    this.syncCameraViewport();
+    this.camera.jumpTo(this.player);
+    this.resetEnemies();
     this.lineageUnlocked = false;
     this.apexQueued = false;
     this.unspentChoicesAtTransition = 0;
@@ -1933,7 +2054,7 @@ export class GameApp {
   }
 
   private resetEnemies(): void {
-    const bounds = this.enemyBounds();
+    const bounds = this.spawnBounds();
     const usableWidth = Math.max(1, bounds.maxX - bounds.minX);
     const usableHeight = Math.max(1, bounds.maxY - bounds.minY);
 

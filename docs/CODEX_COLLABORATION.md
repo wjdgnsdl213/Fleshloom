@@ -125,3 +125,12 @@ Open risks / decisions requested:
 - Architecture: shared progression baselines moved to `src/config/progression.ts`; pure Korean formatting lives in `src/content/choicePresentation.ts` and does not alter selection rules.
 - Verification: targeted presentation/progression tests pass 2 files/26 tests; final repository check passes 29 files/294 tests, lint, strict TypeScript, and the production build.
 - Open risk: no controllable browser backend is available, so Korean wrapping at laptop and phone widths remains a manual visual check.
+
+### 2026-08-12 / P2 finite world and camera foundation
+
+- Agent and task: the primary agent replaced viewport-bound simulation with a finite world and a renderer-independent tracking camera. No delegation was used because the coordinate contract crosses composition, spawning, boss layout, and presentation.
+- Result: Carrier-09 now traverses a 3,200×1,800 district. The camera uses a soft dead zone and resize-stable easing, while loop geometry, enemies, projectiles, collision, and capture remain in world coordinates.
+- Presentation: all gameplay display objects share one camera-transformed Pixi world container; weather and DOM HUD/choice/touch layers remain screen-fixed. The current approved background temporarily scales across the world until P3 replaces it with authored scrolling layers.
+- Encounter handling: normal waves spawn in a camera-local rectangle but simulate against full-world bounds. Warden arrival creates a local arena that constrains both the player and camera.
+- Verification: the final `npm run check` passes 30 test files/300 tests, lint, strict TypeScript, and the production build.
+- Open risk: the configured browser runtime remains unavailable, so follow lag, resize framing, and touch-screen composition require owner play inspection.

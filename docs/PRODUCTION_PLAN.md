@@ -33,7 +33,7 @@ Internal release target: 2026-08-25
 | --- | --- | --- | --- |
 | P0 | Production planning | 정식 버전 로드맵, 완료 규칙, 진행 기록 | Complete |
 | P1 | Korean player-facing choices | 변이·임프린트 선택 이름/설명/수치 한국어화 | Complete |
-| P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | In progress |
+| P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | Complete |
 | P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Pending |
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Pending |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Pending |
@@ -108,3 +108,14 @@ Internal release target: 2026-08-25
 - 검증: 관련 테스트 2파일/26개와 전체 `npm run check` 29파일/294개 테스트, lint, TypeScript, production build 통과.
 - 남은 시각 검증: 실제 브라우저에서 긴 한국어 문구의 카드 줄바꿈과 좁은 화면 가독성을 확인해야 한다.
 - Next: P2 유한 월드 좌표와 플레이어 추적 카메라 기반.
+
+### 2026-08-12 — P2 complete
+
+- 화면 크기와 독립적인 3,200×1,800 유한 월드와 중앙 시작 지점을 추가했다.
+- 완만한 데드존, 지수 보간 추적, 월드 가장자리 제한, 화면 리사이즈 시 중심 보존을 담당하는 순수 `Camera2D` 모델을 추가했다.
+- Pixi 게임 오브젝트를 하나의 월드 컨테이너로 묶어 카메라 변환을 한 번만 적용하고, 비와 DOM HUD·선택·터치 UI는 화면 공간에 유지했다.
+- 플레이어, 루프, 적, 투사체와 충돌은 월드 좌표를 유지한다. 웨이브 시작 위치만 현재 카메라 주변으로 제한해 먼 월드 구석에 적이 고립되지 않게 했다.
+- Warden 전환 시 현재 조우 지점 주위에 별도 아레나를 만들고 플레이어와 카메라를 함께 제한한다.
+- 검증: 카메라 단위 테스트 6개를 포함한 전체 `npm run check`가 30파일/300개 테스트, lint, TypeScript, production build를 모두 통과했다.
+- 남은 시각 검증: 자동 브라우저 런타임을 사용할 수 없어 실제 이동 중 카메라 감속감과 다양한 화면 비율은 수동 확인이 필요하다.
+- Next: P3 반복 가능한 도로 바닥, 환경 레이어, 화면 밖 스폰과 가시적 월드 경계.

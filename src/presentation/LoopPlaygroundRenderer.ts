@@ -10,6 +10,7 @@ import {
 import type { EnemyImprintKind } from '../content/enemies';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
+import type { WorldBounds } from '../config/world';
 import { polygonCentroid } from '../core/geometry/polygon';
 import { lerpVec2, type Vec2 } from '../core/geometry/vector';
 import type {
@@ -20,6 +21,7 @@ import type {
   LoopClosure,
   LoopPreview,
 } from '../game/loop/LoopPath';
+import type { Camera2DSnapshot } from '../game/world/Camera2D';
 
 const ART_ASSET_URLS = {
   background: '/assets/art/environment/quarantine-street-v1.png',
@@ -131,6 +133,8 @@ export interface WardenAttackEchoView {
 export interface PlaygroundRenderState {
   readonly width: number;
   readonly height: number;
+  readonly worldBounds: WorldBounds;
+  readonly camera: Camera2DSnapshot;
   readonly elapsed: number;
   readonly player: Vec2;
   readonly warden: WardenSnapshot | null;
@@ -151,6 +155,7 @@ export interface PlaygroundRenderState {
 }
 
 export class LoopPlaygroundRenderer {
+  private readonly worldLayer = new Container();
   private readonly backgroundSprite = new Sprite(Texture.EMPTY);
   private readonly environment = new Graphics();
   private readonly wardenUnderlay = new Graphics();
@@ -211,7 +216,7 @@ export class LoopPlaygroundRenderer {
   }
 
   public attach(stage: Container): void {
-    stage.addChild(
+    this.worldLayer.addChild(
       this.backgroundSprite,
       this.environment,
       this.wardenUnderlay,
@@ -222,15 +227,19 @@ export class LoopPlaygroundRenderer {
       this.loopGraphics,
       this.capturedEchoLayer,
       this.effects,
-      this.weather,
     );
+    stage.addChild(this.worldLayer, this.weather);
   }
 
   public render(state: PlaygroundRenderState): void {
     const visualState = state.reducedMotion
       ? { ...state, elapsed: 0 }
       : state;
-    this.applySceneImpact(state.closureEcho, state.reducedMotion);
+    this.applySceneImpact(
+      state.camera,
+      state.closureEcho,
+      state.reducedMotion,
+    );
     this.drawEnvironment(visualState);
     this.drawActors(visualState);
     this.drawLoop(visualState);
@@ -249,6 +258,7 @@ export class LoopPlaygroundRenderer {
   }
 
   private applySceneImpact(
+    camera: Camera2DSnapshot,
     closureEcho: ClosureEchoView | null,
     reducedMotion: boolean,
   ): void {
@@ -268,30 +278,10 @@ export class LoopPlaygroundRenderer {
       offsetY = Math.cos(progress * 173 + closureEcho.captured * 2.3) * amplitude * 0.72;
     }
 
-    for (const layer of [
-      this.environment,
-      this.wardenUnderlay,
-      this.wardenSpriteLayer,
-      this.actors,
-      this.assetActors,
-      this.tetherLayer,
-      this.loopGraphics,
-      this.capturedEchoLayer,
-      this.effects,
-    ]) {
-      layer.position.set(offsetX, offsetY);
-    }
-
-    if (
-      this.backgroundSprite.visible &&
-      this.environmentWidth > 0 &&
-      this.environmentHeight > 0
-    ) {
-      this.backgroundSprite.position.set(
-        this.environmentWidth * 0.5 + offsetX,
-        this.environmentHeight * 0.5 + offsetY,
-      );
-    }
+    this.worldLayer.position.set(
+      -camera.x + offsetX,
+      -camera.y + offsetY,
+    );
 
     // Rain and practical-light bloom stay in screen space so the world impact
     // never turns the weather into a second, competing camera shake.
@@ -388,7 +378,8 @@ export class LoopPlaygroundRenderer {
   }
 
   private drawEnvironment(state: PlaygroundRenderState): void {
-    const { width, height } = state;
+    const width = state.worldBounds.maxX - state.worldBounds.minX;
+    const height = state.worldBounds.maxY - state.worldBounds.minY;
     if (
       width === this.environmentWidth &&
       height === this.environmentHeight
@@ -406,7 +397,10 @@ export class LoopPlaygroundRenderer {
         (width + 12) / this.backgroundTexture.width,
         (height + 12) / this.backgroundTexture.height,
       );
-      this.backgroundSprite.position.set(width * 0.5, height * 0.5);
+      this.backgroundSprite.position.set(
+        state.worldBounds.minX + width * 0.5,
+        state.worldBounds.minY + height * 0.5,
+      );
       this.backgroundSprite.scale.set(coverScale);
 
       const edgeShade = Math.max(18, Math.min(width, height) * 0.04);
