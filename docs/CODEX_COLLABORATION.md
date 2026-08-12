@@ -110,3 +110,10 @@ Open risks / decisions requested:
 - Result: reduced motion now disables capture camera shake, freezes nonessential ambient animation, and honors the operating-system reduced-motion preference. Reduced flash replaces high-frequency damage flicker with a stable cue, lowers closure/loop-cut/Warden strike flashes, and removes HUD burst/glow animation. Master/music/SFX volume cycling moved to a tested audio helper and remains active across run resets for the session.
 - Verification: the new audio settings tests pass; final `npm run check` passes 28 test files/290 tests, lint, strict TypeScript, and the production build.
 - Open risks: visual intensity, phone-width readability, frame pacing, and actual Web Audio behavior still require interactive browser/device inspection.
+
+### 2026-08-12 / P0 production planning
+
+- Agent and task: the primary agent converted the prototype follow-up requests into a staged production roadmap.
+- Result: `docs/PRODUCTION_PLAN.md` now owns the P0–P6 status, acceptance criteria, and progress log. Every completed workstream must include tests, documentation, a dedicated commit, and a push to `origin/main`.
+- Locked defaults: Korean player-facing choices, a finite 4–6-screen scrolling map, one-hit fodder plus layered armored enemies, PC 16:9 priority with mobile support, and the approved generated styleframe as the runtime visual target.
+- Next: P1 Korean mutation and imprint choice presentation.

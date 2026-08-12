@@ -20,12 +20,13 @@ npm run check
 ## 문서 읽는 순서
 
 1. `docs/GAME_DESIGN.md`
-2. `docs/STORY.md`
-3. `docs/VISUAL_BIBLE.md`
-4. `docs/VISUAL_TARGET_M1_5.md`
-5. `docs/ARCHITECTURE.md`
-6. `docs/MILESTONES.md`
-7. `docs/TITLE_SHORTLIST.md`
+2. `docs/PRODUCTION_PLAN.md`
+3. `docs/STORY.md`
+4. `docs/VISUAL_BIBLE.md`
+5. `docs/VISUAL_TARGET_M1_5.md`
+6. `docs/ARCHITECTURE.md`
+7. `docs/MILESTONES.md`
+8. `docs/TITLE_SHORTLIST.md`
 
 ## 현재 조작
 
