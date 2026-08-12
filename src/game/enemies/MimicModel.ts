@@ -1,3 +1,5 @@
+import { resolveCircleColliders } from '../../core/geometry/collision';
+import type { Obb } from '../../core/geometry/obb';
 import type { Vec2 } from '../../core/geometry/vector';
 
 export const MAX_MIMIC_STEP_SECONDS = 0.1;
@@ -236,6 +238,23 @@ export class MimicModel {
     const normalized = this.normalizedDirection(direction);
     this.facing.x = normalized.x;
     this.facing.y = normalized.y;
+  }
+
+  /** Pushes the body out of static street structures after each step. */
+  public applyStaticColliders(colliders: readonly Obb[]): void {
+    if (!this.alive || colliders.length === 0) {
+      return;
+    }
+
+    const resolved = resolveCircleColliders(
+      this.position,
+      MIMIC_BALANCE.radius,
+      colliders,
+    );
+    if (resolved !== this.position) {
+      this.position.x = resolved.x;
+      this.position.y = resolved.y;
+    }
   }
 
   private clampToBounds(bounds: MimicArenaBounds): void {

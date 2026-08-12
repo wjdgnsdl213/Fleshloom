@@ -1,3 +1,5 @@
+import { resolveCircleColliders } from '../../core/geometry/collision';
+import type { Obb } from '../../core/geometry/obb';
 import type { Vec2 } from '../../core/geometry/vector';
 import {
   LayeredCaptureState,
@@ -149,6 +151,22 @@ export class EliteHuskModel {
       y: nextY === desiredY ? this.velocity.y : 0,
     };
     this.position = { x: nextX, y: nextY };
+  }
+
+  /** Pushes the body out of static street structures after each step. */
+  public applyStaticColliders(colliders: readonly Obb[]): void {
+    if (!this.layers.snapshot.alive || colliders.length === 0) {
+      return;
+    }
+
+    const resolved = resolveCircleColliders(
+      this.position,
+      ELITE_HUSK_BALANCE.radius,
+      colliders,
+    );
+    if (resolved !== this.position) {
+      this.position = { x: resolved.x, y: resolved.y };
+    }
   }
 
   public capture(): LayeredCaptureResult {

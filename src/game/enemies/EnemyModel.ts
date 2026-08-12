@@ -6,6 +6,8 @@ import {
   type EnemyDefinition,
 } from '../../content/enemies';
 import { ARMORED_DRIFTER_BALANCE } from '../../content/armoredDrifters';
+import { resolveCircleColliders } from '../../core/geometry/collision';
+import type { Obb } from '../../core/geometry/obb';
 import type { Vec2 } from '../../core/geometry/vector';
 import {
   ArmoredCaptureState,
@@ -625,6 +627,27 @@ export class EnemyModel {
     const elapsed = Math.min(availableSeconds, this.behaviorTimer);
     this.behaviorTimer = Math.max(0, this.behaviorTimer - elapsed);
     return elapsed;
+  }
+
+  /**
+   * Pushes the body out of static street structures. Called by the run loop
+   * after `step`; sliding along walls is preserved because only the
+   * penetrating component of motion is removed each tick.
+   */
+  public applyStaticColliders(colliders: readonly Obb[]): void {
+    if (!this.alive || colliders.length === 0) {
+      return;
+    }
+
+    const resolved = resolveCircleColliders(
+      this.position,
+      this.radius,
+      colliders,
+    );
+    if (resolved !== this.position) {
+      this.position.x = resolved.x;
+      this.position.y = resolved.y;
+    }
   }
 
   private clampToBounds(bounds: EnemyArenaBounds): void {

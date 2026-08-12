@@ -70,14 +70,10 @@ export const DISTRICT_PROPS: readonly DistrictPropDefinition[] = Object.freeze([
 ]);
 
 /**
- * Raised street debris. These are presentation volumes only: they carry no
- * collision, no capture role, and no reward. They exist so the 3/4 camera has
- * objects that show a top face, a side face, and a cast shadow, which is what
- * separates a space from a flat painted plane.
- *
- * Heights stay low inside the hunt space so actors reading as stepping over
- * them looks plausible. Taller pieces sit near the perimeter, where the hunt
- * rarely travels.
+ * Raised street debris. Since D-028 these footprints also feed the body
+ * colliders in src/content/quarantineColliders.ts: actors can no longer walk
+ * through them. They still carry no capture role and no reward — debris is
+ * low, so the living tether and the capture polygon pass over it unchanged.
  */
 export type DistrictBlockKind = 'slab' | 'crate' | 'rubble' | 'barrier';
 

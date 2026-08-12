@@ -1,4 +1,4 @@
-import { Application, Ticker } from 'pixi.js';
+import { Application, Rectangle, Ticker } from 'pixi.js';
 import {
   nextAudioVolumeStep,
   PlaygroundAudio,
@@ -20,7 +20,9 @@ import {
   QUARANTINE_WORLD_START,
   WORLD_TUNING,
 } from '../config/world';
+import { findFreePosition, resolveCircleColliders } from '../core/geometry/collision';
 import type { Vec2 } from '../core/geometry/vector';
+import { QUARANTINE_COLLIDERS } from '../content/quarantineColliders';
 import { SeededRandom } from '../core/random/SeededRandom';
 import {
   WardenModel,
@@ -68,6 +70,17 @@ import {
   cameraViewportForScreen,
 } from '../game/world/Camera2D';
 import { selectOffscreenSpawnRegion } from '../game/world/WorldSpawnRegion';
+
+/** Body radii used only to validate spawn points against street colliders. */
+const SPAWN_BODY_RADII: Readonly<Record<FullRunEnemyArchetype, number>> =
+  Object.freeze({
+    drifter: 20,
+    rusher: 16,
+    watcher: 22,
+    cutter: 20,
+    mimic: 18,
+    'elite-husk': 34,
+  });
 import {
   TutorialDirector,
   type TutorialStep,
@@ -319,6 +332,26 @@ export class GameApp {
     window.addEventListener('blur', this.handleBlur);
     this.app.canvas.addEventListener('pointerdown', this.focusCanvas);
     this.app.ticker.add(this.update);
+
+    if (import.meta.env.DEV) {
+      // Dev-only QA hook: renders the current viewport on demand and returns
+      // a base64 PNG. Headless capture uses this because SwiftShader
+      // compositing never surfaces frames from the saturated game loop. The
+      // frame is clamped to the screen so the payload stays CDP-sized; dead
+      // code in production builds, like qaScene.
+      (window as unknown as Record<string, unknown>).__fleshloomQa = {
+        screenshot: () =>
+          this.app.renderer.extract.base64({
+            target: this.app.stage,
+            frame: new Rectangle(
+              0,
+              0,
+              this.app.screen.width,
+              this.app.screen.height,
+            ),
+          }),
+      };
+    }
     if (this.started) {
       this.app.canvas.focus();
     }
@@ -925,6 +958,19 @@ export class GameApp {
         ? Math.max(minY, Math.min(maxY, this.player.y))
         : (bounds.minY + bounds.maxY) / 2;
 
+    // Static street structures stop the body but never the loop (D-028).
+    // Resolving before velocity derivation keeps playerVelocity honest for
+    // the walk cycle and for mimics that mirror it.
+    const resolved = resolveCircleColliders(
+      this.player,
+      PLAYGROUND_TUNING.playerRadius,
+      QUARANTINE_COLLIDERS,
+    );
+    if (resolved !== this.player) {
+      this.player.x = resolved.x;
+      this.player.y = resolved.y;
+    }
+
     if (deltaSeconds > 0) {
       this.playerVelocity = {
         x: (this.player.x - previousX) / deltaSeconds,
@@ -963,6 +1009,7 @@ export class GameApp {
         );
         this.nextProjectileId += 1;
       }
+      enemy.applyStaticColliders(QUARANTINE_COLLIDERS);
     }
 
     for (const cutter of this.cutters) {
@@ -981,6 +1028,7 @@ export class GameApp {
       if (loopCutPosition === null && actions[0] !== undefined) {
         loopCutPosition = actions[0].position;
       }
+      cutter.applyStaticColliders(QUARANTINE_COLLIDERS);
     }
 
     for (const mimic of this.mimics) {
@@ -996,6 +1044,7 @@ export class GameApp {
           bounds,
         },
       );
+      mimic.applyStaticColliders(QUARANTINE_COLLIDERS);
     }
 
     for (const husk of this.eliteHusks) {
@@ -1008,6 +1057,7 @@ export class GameApp {
         this.player,
         bounds,
       );
+      husk.applyStaticColliders(QUARANTINE_COLLIDERS);
     }
 
     const hits: Extract<ProjectileStepResult, { kind: 'hit' }>[] = [];
@@ -1323,15 +1373,20 @@ export class GameApp {
     });
 
     for (const request of requests) {
+      // Never seed a body inside a street structure (D-028).
+      const position = this.freeSpawnPosition(
+        request.position,
+        SPAWN_BODY_RADII[request.archetype],
+      );
       switch (request.archetype) {
         case 'cutter':
-          this.cutters.push(new CutterModel(request));
+          this.cutters.push(new CutterModel({ ...request, position }));
           break;
         case 'mimic':
-          this.mimics.push(new MimicModel(request));
+          this.mimics.push(new MimicModel({ ...request, position }));
           break;
         case 'elite-husk':
-          this.eliteHusks.push(new EliteHuskModel(request));
+          this.eliteHusks.push(new EliteHuskModel({ ...request, position }));
           break;
         case 'drifter': {
           if (request.scheduledAtSeconds >= 180) {
@@ -1341,7 +1396,7 @@ export class GameApp {
             new EnemyModel({
               id: request.id,
               archetype: request.archetype,
-              position: request.position,
+              position,
               phase: request.phase,
               captureProfile: captureProfileForDrifterSpawn(
                 request.scheduledAtSeconds,
@@ -1357,13 +1412,22 @@ export class GameApp {
             new EnemyModel({
               id: request.id,
               archetype: request.archetype,
-              position: request.position,
+              position,
               phase: request.phase,
             }),
           );
           break;
       }
     }
+  }
+
+  private freeSpawnPosition(preferred: Vec2, radius: number): Vec2 {
+    return findFreePosition(
+      preferred,
+      radius,
+      QUARANTINE_COLLIDERS,
+      QUARANTINE_WORLD_BOUNDS,
+    );
   }
 
   private updateFullRunUnlocks(): void {

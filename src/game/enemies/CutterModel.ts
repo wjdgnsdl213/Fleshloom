@@ -1,3 +1,5 @@
+import { resolveCircleColliders } from '../../core/geometry/collision';
+import type { Obb } from '../../core/geometry/obb';
 import type { Vec2 } from '../../core/geometry/vector';
 
 export const MAX_CUTTER_STEP_SECONDS = 0.1;
@@ -644,6 +646,23 @@ export class CutterModel {
   private stop(): void {
     this.velocity.x = 0;
     this.velocity.y = 0;
+  }
+
+  /** Pushes the body out of static street structures after each step. */
+  public applyStaticColliders(colliders: readonly Obb[]): void {
+    if (!this.alive || colliders.length === 0) {
+      return;
+    }
+
+    const resolved = resolveCircleColliders(
+      this.position,
+      CUTTER_BALANCE.radius,
+      colliders,
+    );
+    if (resolved !== this.position) {
+      this.position.x = resolved.x;
+      this.position.y = resolved.y;
+    }
   }
 
   private clampToBounds(bounds: CutterArenaBounds): void {

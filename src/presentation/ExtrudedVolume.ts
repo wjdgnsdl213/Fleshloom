@@ -7,8 +7,9 @@
  * its ground footprint, the near side faces that connect the two, and a cast
  * shadow thrown along the fixed key light.
  *
- * Pure geometry. Nothing here touches Pixi, and no world object drawn with it
- * participates in capture, collision, or reward rules.
+ * Pure geometry. Nothing here touches Pixi. Body collision against these
+ * footprints lives in src/core/geometry/collision.ts (D-028); capture and
+ * reward rules still ignore them.
  */
 
 import type { Vec2 } from '../core/geometry/vector';
