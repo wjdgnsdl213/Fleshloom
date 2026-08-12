@@ -189,3 +189,10 @@ Open risks / decisions requested:
 - Verification: targeted tests pass 2 files/10 tests; final `npm run release:verify` passes 40 files/337 tests, lint, strict TypeScript, build, 20 public-file copies, 12 index references, 5.49MiB startup art, and 17.28MiB total public payload. The alpha WebP has transparent corners.
 - Milestone review: the read-only reviewer independently confirmed the performance and seamless-edge fixes, found no locked-rule, layered-capture, architecture, stale-path, or major performance regression, and returned GO. Live browser/device motion remains the only visual exit risk.
 - Open risk: browser discovery returned no available backend, so live tether bending, capture readability, narrow-screen scale, and frame pacing remain a manual visual gate.
+
+### 2026-08-12 / portable continuation handoff
+
+- Agent and task: the primary agent converted the repository state into a chat-independent handoff for another computer, Codex session, or Claude Code. No delegation was used.
+- Result: `docs/HANDOFF.md` now owns the project synopsis, embedded completion styleframe, clean-machine setup, implemented inventory, exact P7-3 starting sequence, acceptance criteria, code map, risks, and a copyable next-session prompt. Root `CLAUDE.md` routes Claude to the same binding instructions and active objective.
+- Portability: Node support is declared in `package.json`/lockfile and `.nvmrc` pins the verified 24.16.0 environment. README now exposes the completion target and handoff before implementation detail.
+- Rules: no gameplay, balance, input, progression, presentation, or asset behavior changed in this documentation pass.
