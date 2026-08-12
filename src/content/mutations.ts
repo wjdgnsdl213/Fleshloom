@@ -136,15 +136,15 @@ export const MUTATION_IDS: readonly MutationId[] = Object.freeze([
 export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   strider: defineMutation({
     id: 'strider',
-    name: 'Strider',
-    description: 'Movement speed +10%',
+    name: '질주 근섬유',
+    description: '이동 속도를 높여 더 빠르게 고리를 그립니다.',
     maxRank: 2,
     effectsPerRank: [{ kind: 'movement-speed-percent', percent: 10 }],
   }),
   marrow: defineMutation({
     id: 'marrow',
-    name: 'Marrow',
-    description: 'Maximum HP +20 and current HP +20',
+    name: '골수 증식',
+    description: '최대 체력과 현재 체력을 함께 늘립니다.',
     maxRank: 2,
     effectsPerRank: [
       { kind: 'max-hp-flat', amount: 20 },
@@ -153,8 +153,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   carrion: defineMutation({
     id: 'carrion',
-    name: 'Carrion',
-    description: 'Capture recovery +2 and recovery cap +4',
+    name: '사체 소화',
+    description: '포획 회복량과 한 번에 회복할 수 있는 상한을 늘립니다.',
     maxRank: 2,
     effectsPerRank: [
       { kind: 'capture-recovery-flat', amount: 2 },
@@ -163,22 +163,22 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   hunger: defineMutation({
     id: 'hunger',
-    name: 'Hunger',
-    description: 'XP gain +10%',
+    name: '포식 본능',
+    description: '모든 포획에서 얻는 경험치를 늘립니다.',
     maxRank: 2,
     effectsPerRank: [{ kind: 'xp-gain-percent', percent: 10 }],
   }),
   synapse: defineMutation({
     id: 'synapse',
-    name: 'Synapse',
-    description: 'Loop snap radius +4 px',
+    name: '감각 시냅스',
+    description: '닻과 이전 궤적에 고리가 붙는 거리를 늘립니다.',
     maxRank: 2,
     effectsPerRank: [{ kind: 'snap-radius-flat', amount: 4 }],
   }),
   memory: defineMutation({
     id: 'memory',
-    name: 'Memory',
-    description: 'Imprint duration +8 seconds',
+    name: '생체 기억',
+    description: '흡수한 임프린트의 지속시간을 늘립니다.',
     maxRank: 2,
     effectsPerRank: [
       { kind: 'imprint-duration-flat-seconds', seconds: 8 },
@@ -186,8 +186,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   'blade-gland': defineMutation({
     id: 'blade-gland',
-    name: 'Blade Gland',
-    description: 'Blade ring +18 px; rank 2 pierces one extra stability.',
+    name: '칼날샘',
+    description: '칼날 띠를 넓히고 최종 등급에서 안정도를 추가 파괴합니다.',
     maxRank: 2,
     effectsPerRank: [{ kind: 'blade-band-flat', amount: 18 }],
     effectsByRank: [
@@ -200,8 +200,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   'spike-crown': defineMutation({
     id: 'spike-crown',
-    name: 'Spike Crown',
-    description: 'Spike recovery +2; rank 2 cracks elite stability.',
+    name: '가시 왕관',
+    description: '가시 임프린트의 회복량을 높이고 Elite 안정도를 파괴합니다.',
     maxRank: 2,
     effectsPerRank: [{ kind: 'spike-recovery-flat', amount: 2 }],
     effectsByRank: [
@@ -214,8 +214,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   'nerve-lattice': defineMutation({
     id: 'nerve-lattice',
-    name: 'Nerve Lattice',
-    description: 'Nerve field +28 px and prey speed -10 percentage points.',
+    name: '신경 격자',
+    description: '신경장 범위와 둔화 강도를 함께 높입니다.',
     maxRank: 2,
     effectsPerRank: [
       { kind: 'nerve-radius-flat', amount: 28 },
@@ -224,8 +224,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   'mirror-organ': defineMutation({
     id: 'mirror-organ',
-    name: 'Mirror Organ',
-    description: 'Symmetry copy XP +10%; rank 2 reveals its preview.',
+    name: '거울 기관',
+    description: '대칭 고리의 경험치를 높이고 최종 등급에서 미리보기를 해금합니다.',
     maxRank: 2,
     effectsPerRank: [
       { kind: 'symmetry-xp-gain-percent', percent: 10 },
@@ -240,8 +240,8 @@ export const MUTATION_DEFINITIONS: MutationDefinitionMap = Object.freeze({
   }),
   'fourfold-hunt': defineMutation({
     id: 'fourfold-hunt',
-    name: 'Fourfold Hunt',
-    description: 'Project every closure in four cardinal directions.',
+    name: '사중 사냥',
+    description: '모든 고리 폐쇄를 네 방향으로 투영하는 최종 변이입니다.',
     maxRank: 1,
     effectsPerRank: [{ kind: 'fourfold-projection-unlock' }],
   }),

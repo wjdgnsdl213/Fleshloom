@@ -1,5 +1,10 @@
 import './style.css';
 import { GameApp, type GameStatus } from './app/GameApp';
+import {
+  describeMutationUpgradeKo,
+  getImprintChoicePresentationKo,
+} from './content/choicePresentation';
+import { getMutationDefinition } from './content/mutations';
 
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -85,14 +90,14 @@ root.innerHTML = `
     </aside>
 
     <aside class="imprint-readout" data-imprint-panel hidden>
-      <span>ACTIVE IMPRINT</span>
-      <strong data-imprint>NONE</strong>
+      <span>활성 임프린트</span>
+      <strong data-imprint>없음</strong>
     </aside>
 
     <section class="decision-panel" data-decision-panel hidden aria-live="assertive">
-      <span class="decision-panel__eyebrow" data-decision-eyebrow>EVOLUTION AVAILABLE</span>
-      <h2 data-decision-title>CHOOSE A MUTATION</h2>
-      <p data-decision-copy>Simulation paused. Select with 1, 2, or 3.</p>
+      <span class="decision-panel__eyebrow" data-decision-eyebrow>진화 가능</span>
+      <h2 data-decision-title>변이를 선택하세요</h2>
+      <p data-decision-copy>게임이 정지되었습니다. 1, 2, 3으로 선택하세요.</p>
       <div class="decision-options" data-decision-options></div>
     </section>
 
@@ -269,9 +274,12 @@ const updateHud = (status: GameStatus): void => {
     const resultSeconds = totalSeconds % 60;
     const mutations =
       result.mutations.length === 0
-        ? 'NONE'
+        ? '없음'
         : result.mutations
-            .map((mutation) => `${mutation.id.toUpperCase()} ${mutation.rank}`)
+            .map(
+              (mutation) =>
+                `${getMutationDefinition(mutation.id).name} ${mutation.rank}등급`,
+            )
             .join(' · ');
     const victoryRows =
       result.outcome === 'victory'
@@ -295,7 +303,7 @@ const updateHud = (status: GameStatus): void => {
       <span>BIOMASS</span><b>${result.captured.toString().padStart(2, '0')}</b>
       <span>EVOLUTION</span><b>${result.level.toString().padStart(2, '0')}</b>
       <span>UNSPENT</span><b>${result.unspentChoices}</b>
-      <span>IMPRINT</span><b>${result.activeImprint?.toUpperCase() ?? 'NONE'}</b>
+      <span>IMPRINT</span><b>${result.activeImprint === null ? '없음' : getImprintChoicePresentationKo(result.activeImprint).name}</b>
       ${victoryRows}
       <span>MUTATIONS</span><b>${mutations}</b>
     `;
@@ -352,7 +360,7 @@ const updateHud = (status: GameStatus): void => {
 
   imprintPanel.hidden = status.activeImprint === null;
   if (status.activeImprint !== null) {
-    imprintReadout.textContent = `${status.activeImprint.toUpperCase()} · ${Math.ceil(status.imprintSeconds)}s`;
+    imprintReadout.textContent = `${getImprintChoicePresentationKo(status.activeImprint).name} · ${Math.ceil(status.imprintSeconds)}초`;
   }
 
   const hasMutationDraft = status.mutationCandidates.length > 0;
@@ -361,48 +369,46 @@ const updateHud = (status: GameStatus): void => {
   decisionPanel.dataset.mode = status.decisionMode;
 
   if (hasMutationDraft) {
-    decisionEyebrow.textContent = 'PERMANENT EVOLUTION';
-    decisionTitle.textContent = 'CHOOSE A MUTATION';
-    decisionCopy.textContent = 'STASIS · Simulation paused · Select with 1, 2, or 3';
+    decisionEyebrow.textContent = '영구 진화';
+    decisionTitle.textContent = '변이를 선택하세요';
+    decisionCopy.textContent = '정지 상태 · 1, 2, 3으로 선택하세요';
     decisionOptions.replaceChildren(
       ...status.mutationCandidates.map((candidate, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.choiceIndex = String(index);
-        button.innerHTML = `<kbd>${index + 1}</kbd><span><strong>${candidate.name}</strong><small>${candidate.description} · RANK ${candidate.nextRank}/${candidate.maxRank}</small></span>`;
+        const upgradeDescription = describeMutationUpgradeKo(candidate);
+        button.innerHTML = `<kbd>${index + 1}</kbd><span><strong>${candidate.name}</strong><small>${candidate.description}<br>적용: ${upgradeDescription} · ${candidate.nextRank}/${candidate.maxRank}등급</small></span>`;
         return button;
       }),
     );
   } else if (hasImprintOffer) {
-    decisionEyebrow.textContent = 'TEMPORARY ADAPTATION';
-    decisionTitle.textContent = 'ABSORB AN IMPRINT';
+    decisionEyebrow.textContent = '임시 적응';
+    decisionTitle.textContent = '임프린트를 흡수하세요';
     const imprintInstruction =
       status.activeImprint === null
-        ? 'Choose the trait to carry for this hunt.'
-        : `Replace ${status.activeImprint.toUpperCase()}, or keep it with 3 / ESC.`;
+        ? '1 또는 2로 임시 특성을 선택하세요.'
+        : `현재 ${getImprintChoicePresentationKo(status.activeImprint).name}을 교체하거나 3 / ESC로 유지하세요.`;
     decisionCopy.textContent =
       status.decisionMode === 'slow'
-        ? `TIME DILATION 15% · ${imprintInstruction}`
-        : `STASIS · ${imprintInstruction}`;
+        ? `시간 감속 15% · ${imprintInstruction}`
+        : `정지 상태 · ${imprintInstruction}`;
     const optionButtons = status.imprintCandidates.map((candidate, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.choiceIndex = String(index);
-      const descriptions: Record<typeof candidate, string> = {
-        blade: 'Closure emits a lethal ring outside the selected polygon.',
-        nerve: 'Anchored tether slows prey inside its nerve field.',
-        spike: 'Rusher biomass yields additional recovery.',
-        symmetry: 'Capture repeats through a 180-degree mirrored polygon.',
-      };
-      const description = descriptions[candidate];
-      button.innerHTML = `<kbd>${index + 1}</kbd><span><strong>${candidate.toUpperCase()}</strong><small>${description}</small></span>`;
+      const presentation = getImprintChoicePresentationKo(candidate);
+      button.innerHTML = `<kbd>${index + 1}</kbd><span><strong>${presentation.name}</strong><small>${presentation.description}</small></span>`;
       return button;
     });
     if (status.activeImprint !== null) {
       const keepButton = document.createElement('button');
       keepButton.type = 'button';
       keepButton.dataset.choiceIndex = '2';
-      keepButton.innerHTML = `<kbd>3</kbd><span><strong>KEEP ${status.activeImprint.toUpperCase()}</strong><small>Preserve its remaining ${Math.ceil(status.imprintSeconds)} seconds.</small></span>`;
+      const activePresentation = getImprintChoicePresentationKo(
+        status.activeImprint,
+      );
+      keepButton.innerHTML = `<kbd>3</kbd><span><strong>${activePresentation.name} 유지</strong><small>남은 지속시간 ${Math.ceil(status.imprintSeconds)}초를 그대로 유지합니다.</small></span>`;
       optionButtons.push(keepButton);
     }
     decisionOptions.replaceChildren(...optionButtons);

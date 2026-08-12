@@ -32,8 +32,8 @@ Internal release target: 2026-08-25
 | ID | Workstream | Deliverable | Status |
 | --- | --- | --- | --- |
 | P0 | Production planning | 정식 버전 로드맵, 완료 규칙, 진행 기록 | Complete |
-| P1 | Korean player-facing choices | 변이·임프린트 선택 이름/설명/수치 한국어화 | In progress |
-| P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | Pending |
+| P1 | Korean player-facing choices | 변이·임프린트 선택 이름/설명/수치 한국어화 | Complete |
+| P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | In progress |
 | P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Pending |
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Pending |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Pending |
@@ -99,3 +99,12 @@ Internal release target: 2026-08-25
 - 단계별 완료 조건에 테스트, 문서 갱신, 독립 커밋, GitHub 푸시를 포함했다.
 - P1 한국어 선택 UI 작업을 다음 활성 단계로 지정했다.
 
+### 2026-08-12 — P1 complete
+
+- 11개 영구 변이의 이름과 요약을 한국어로 변경했다.
+- 선택 카드가 다음 등급의 실제 기본값과 `현재 → 적용 후` 수치를 표시하도록 전용 표시 계층을 추가했다.
+- Blade, Nerve, Spike, Symmetry 임프린트의 선택·유지·활성 상태와 결과 요약을 한국어화했다.
+- UI 수치와 실제 게임 규칙이 어긋나지 않도록 HP, 회복 상한, 임프린트 시간, Blade/Spike/Nerve 기본값을 `PROGRESSION_BASELINE`으로 통합했다.
+- 검증: 관련 테스트 2파일/26개와 전체 `npm run check` 29파일/294개 테스트, lint, TypeScript, production build 통과.
+- 남은 시각 검증: 실제 브라우저에서 긴 한국어 문구의 카드 줄바꿈과 좁은 화면 가독성을 확인해야 한다.
+- Next: P2 유한 월드 좌표와 플레이어 추적 카메라 기반.

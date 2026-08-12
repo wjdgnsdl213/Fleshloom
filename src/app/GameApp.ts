@@ -13,6 +13,7 @@ import {
   type MutationId,
 } from '../content/mutations';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
+import { PROGRESSION_BASELINE } from '../config/progression';
 import type { Vec2 } from '../core/geometry/vector';
 import { SeededRandom } from '../core/random/SeededRandom';
 import {
@@ -148,7 +149,6 @@ const PLAYER_FOOTER_SAFE_AREA = {
   wide: 122,
 } as const;
 
-const BASE_CAPTURE_RECOVERY_CAP = 12;
 const RUN_SEED = 0xf1e5_1009;
 interface EnemySeed {
   readonly archetype: EnemyArchetype;
@@ -195,14 +195,16 @@ export class GameApp {
   private mutationRandom = new SeededRandom(RUN_SEED);
   private waveRandom = new SeededRandom(RUN_SEED ^ 0xa51c_0de5);
   private readonly vitals = new PlayerVitals({
-    maxHp: 100,
+    maxHp: PROGRESSION_BASELINE.maxHp,
     contactInvulnerabilitySeconds: 0.65,
   });
   private readonly experience = new Experience({
     firstThreshold: 30,
     thresholdGrowth: 1.4,
   });
-  private readonly imprint = new ImprintState(25);
+  private readonly imprint = new ImprintState(
+    PROGRESSION_BASELINE.imprintDurationSeconds,
+  );
   private mutationDraft = this.createMutationDraft();
   private readonly waveDirector = new FullRunWaveDirector({
     random: () => this.waveRandom.next(),
@@ -990,8 +992,11 @@ export class GameApp {
     const activeImprint = this.imprint.snapshot.active;
     const anchor = this.loopPath.samples[0];
     const nerveRank = this.mutationRank('nerve-lattice');
-    const radius = 160 + nerveRank * 28;
-    const slowFactor = Math.max(0.25, 0.55 - nerveRank * 0.1);
+    const radius = PROGRESSION_BASELINE.nerveFieldRadius + nerveRank * 28;
+    const slowFactor = Math.max(
+      0.25,
+      PROGRESSION_BASELINE.nerveEnemySpeedFactor - nerveRank * 0.1,
+    );
     if (
       activeImprint?.kind !== 'nerve' ||
       anchor === undefined ||
@@ -1244,7 +1249,8 @@ export class GameApp {
         );
         const bladeBandWidth =
           imprintKind === 'blade'
-            ? 56 + this.mutationRank('blade-gland') * 18
+            ? PROGRESSION_BASELINE.bladeBandWidth +
+              this.mutationRank('blade-gland') * 18
             : 0;
         const wardenCapture =
           this.warden === null
@@ -1300,7 +1306,8 @@ export class GameApp {
     const activeImprint = this.imprint.snapshot.active?.kind ?? null;
     const bladeBandWidth =
       activeImprint === 'blade'
-        ? 56 + this.mutationRank('blade-gland') * 18
+        ? PROGRESSION_BASELINE.bladeBandWidth +
+          this.mutationRank('blade-gland') * 18
         : 0;
     const carrionBonus = this.mutationRank('carrion') * 2;
     const copyXpMultiplier = (projectionIndex: number): number =>
@@ -1336,7 +1343,9 @@ export class GameApp {
         activeImprint === 'spike' &&
         definition.archetype === 'rusher'
       ) {
-        recovery += 2 + this.mutationRank('spike-crown') * 2;
+        recovery +=
+          PROGRESSION_BASELINE.spikeRusherRecoveryBonus +
+          this.mutationRank('spike-crown') * 2;
       }
       xp += definition.xp * copyXpMultiplier(hit.projectionIndex);
       if (definition.imprintKind !== undefined) {
@@ -1468,7 +1477,8 @@ export class GameApp {
         (enemy) => enemy.snapshot.alive,
       );
       const recoveryCap =
-        BASE_CAPTURE_RECOVERY_CAP + this.mutationRank('carrion') * 4;
+        PROGRESSION_BASELINE.captureRecoveryCap +
+        this.mutationRank('carrion') * 4;
       const xpMultiplier = 1 + this.mutationRank('hunger') * 0.1;
       this.vitals.heal(Math.min(recoveryCap, recovery));
       this.experience.gain(xp * xpMultiplier);
@@ -1618,9 +1628,12 @@ export class GameApp {
       activeImprint,
       bladeBandWidth:
         activeImprint === 'blade'
-          ? 56 + this.mutationRank('blade-gland') * 18
+          ? PROGRESSION_BASELINE.bladeBandWidth +
+            this.mutationRank('blade-gland') * 18
           : 0,
-      nerveFieldRadius: 160 + this.mutationRank('nerve-lattice') * 28,
+      nerveFieldRadius:
+        PROGRESSION_BASELINE.nerveFieldRadius +
+        this.mutationRank('nerve-lattice') * 28,
       loopSamples: this.loopPath.samples,
       loopPreview,
       projectedLoopPreviews,

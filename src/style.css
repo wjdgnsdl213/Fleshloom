@@ -559,7 +559,7 @@ kbd {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
-  min-height: 104px;
+  min-height: 128px;
   padding: 14px;
   border: 1px solid rgb(216 209 190 / 0.16);
   color: #d8d1be;

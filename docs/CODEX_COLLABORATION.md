@@ -117,3 +117,11 @@ Open risks / decisions requested:
 - Result: `docs/PRODUCTION_PLAN.md` now owns the P0–P6 status, acceptance criteria, and progress log. Every completed workstream must include tests, documentation, a dedicated commit, and a push to `origin/main`.
 - Locked defaults: Korean player-facing choices, a finite 4–6-screen scrolling map, one-hit fodder plus layered armored enemies, PC 16:9 priority with mobile support, and the approved generated styleframe as the runtime visual target.
 - Next: P1 Korean mutation and imprint choice presentation.
+
+### 2026-08-12 / P1 Korean choice presentation
+
+- Agent and task: the primary agent localized permanent mutation and temporary imprint decisions while keeping displayed numbers tied to shared gameplay baselines.
+- Result: all 11 mutation cards show Korean names, Korean summaries, next rank, and current-to-next numeric effects. Imprint offer, keep, active readout, and result build names use Korean presentation data. Choice cards reserve more height for Korean wrapping.
+- Architecture: shared progression baselines moved to `src/config/progression.ts`; pure Korean formatting lives in `src/content/choicePresentation.ts` and does not alter selection rules.
+- Verification: targeted presentation/progression tests pass 2 files/26 tests; final repository check passes 29 files/294 tests, lint, strict TypeScript, and the production build.
+- Open risk: no controllable browser backend is available, so Korean wrapping at laptop and phone widths remains a manual visual check.
