@@ -17,10 +17,12 @@
     "release:verify": "npm run check && node scripts/verify-release.mjs"
   },
   "dependencies": {
-    "pixi.js": "^8.19.0"
+    "pixi.js": "^8.19.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/three": "^0.185.4",
     "eslint": "^10.8.1",
     "globals": "^17.9.0",
     "typescript": "^6.0.3",

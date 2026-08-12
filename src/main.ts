@@ -467,13 +467,11 @@ const updateHud = (status: GameStatus): void => {
 };
 
 // Backend modules load lazily so the production bundle only pays for the
-// renderer it actually starts. 'three' arrives with the M4 milestone; until
-// its host module exists the flag resolves to the Pixi backend.
+// renderer it actually starts.
 const rendererHost = await (async () => {
   if (rendererKind === 'three') {
-    // The three backend host lands with M4; until then the flag resolves to
-    // the Pixi backend so a shared URL never hard-fails.
-    console.warn('renderer=three is not available yet; using pixi');
+    const module = await import('./presentation/three/ThreeRendererHost');
+    return module.createThreeRendererHost();
   }
   const module = await import('./presentation/pixi/PixiRendererHost');
   return module.createPixiRendererHost();
