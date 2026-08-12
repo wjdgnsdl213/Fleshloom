@@ -4,6 +4,7 @@ import {
   type GameQaScene,
   type GameStatus,
 } from './app/GameApp';
+import { resolveRendererKind } from './app/rendererSelection';
 import {
   describeMutationUpgradeKo,
   getImprintChoicePresentationKo,
@@ -166,6 +167,8 @@ const qaScene =
 if (qaTouch) {
   root.dataset.qaTouch = 'true';
 }
+
+const rendererKind = resolveRendererKind(qaParameters);
 
 const requiredElement = <T extends Element>(selector: string): T => {
   const element = root.querySelector<T>(selector);
@@ -463,8 +466,22 @@ const updateHud = (status: GameStatus): void => {
   }
 };
 
+// Backend modules load lazily so the production bundle only pays for the
+// renderer it actually starts. 'three' arrives with the M4 milestone; until
+// its host module exists the flag resolves to the Pixi backend.
+const rendererHost = await (async () => {
+  if (rendererKind === 'three') {
+    // The three backend host lands with M4; until then the flag resolves to
+    // the Pixi backend so a shared URL never hard-fails.
+    console.warn('renderer=three is not available yet; using pixi');
+  }
+  const module = await import('./presentation/pixi/PixiRendererHost');
+  return module.createPixiRendererHost();
+})();
+
 const game = new GameApp(
   updateHud,
+  rendererHost,
   qaScene === undefined ? {} : { qaScene },
 );
 let selectedLoopMode: GameStatus['inputMode'] = 'toggle';

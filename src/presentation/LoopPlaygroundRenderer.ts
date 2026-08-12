@@ -9,7 +9,6 @@ import {
   Texture,
   TilingSprite,
 } from 'pixi.js';
-import type { EnemyImprintKind } from '../content/enemies';
 import type { EnemyCaptureProfile } from '../content/enemies';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
 import {
@@ -25,18 +24,12 @@ import {
   type DistrictPropKind,
 } from '../content/quarantineDistrict';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
-import type { WorldBounds } from '../config/world';
 import { polygonCentroid } from '../core/geometry/polygon';
 import { lerpVec2, type Vec2 } from '../core/geometry/vector';
 import type {
-  WardenAttackGeometry,
   WardenSnapshot,
   WardenStage,
 } from '../game/boss/WardenModel';
-import type {
-  LoopClosure,
-  LoopPreview,
-} from '../game/loop/LoopPath';
 import type { Camera2DSnapshot } from '../game/world/Camera2D';
 import { ART_ASSET_URLS } from './AssetManifest';
 import { actorDepthKey, blockDepthKey } from './DepthOrder';
@@ -69,6 +62,30 @@ import {
   samplesAtSpacing,
   type TetherPathSample,
 } from './LivingTetherGeometry';
+import type {
+  CapturedEnemyEchoView,
+  ClosureEchoView,
+  LoopCutEchoView,
+  PlaygroundEnemyView,
+  PlaygroundProjectileView,
+  PlaygroundRenderState,
+  WardenAttackEchoView,
+} from './RenderState';
+
+/**
+ * The render-state contract moved to ./RenderState so a renderer backend can
+ * be swapped without touching the simulation; re-exported for existing
+ * imports.
+ */
+export type {
+  CapturedEnemyEchoView,
+  ClosureEchoView,
+  LoopCutEchoView,
+  PlaygroundEnemyView,
+  PlaygroundProjectileView,
+  PlaygroundRenderState,
+  WardenAttackEchoView,
+};
 
 const TETHER_ROPE_POINT_COUNT = 64;
 const TETHER_ROPE_SCALE = 0.086;
@@ -323,85 +340,6 @@ const DRIFTER_FALLBACK_TUNING: Record<
     scaleY: 1.12,
   },
 };
-
-export interface PlaygroundEnemyView {
-  readonly id: string;
-  readonly archetype: FullRunEnemyArchetype;
-  readonly position: Vec2;
-  readonly velocity: Vec2;
-  readonly facing: Vec2;
-  readonly behaviorState: string;
-  readonly lockedTarget: Vec2 | null;
-  readonly radius: number;
-  readonly phase: number;
-  readonly alive: boolean;
-  readonly captureProfile?: EnemyCaptureProfile;
-  readonly armored?: boolean;
-  readonly staggerRemaining?: number;
-}
-
-export interface PlaygroundProjectileView {
-  readonly position: Vec2;
-  readonly velocity: Vec2;
-  readonly radius: number;
-  readonly alive: boolean;
-}
-
-export interface CapturedEnemyEchoView {
-  readonly archetype: FullRunEnemyArchetype;
-  readonly position: Vec2;
-  readonly radius: number;
-  readonly phase: number;
-  readonly captureLayer: 'ordinary' | 'peeled' | 'killed';
-  readonly captureProfile?: EnemyCaptureProfile;
-}
-
-export interface ClosureEchoView {
-  readonly closure: LoopClosure;
-  readonly projections: readonly LoopClosure[];
-  readonly captured: number;
-  readonly capturedPositions: readonly Vec2[];
-  readonly capturedEnemies: readonly CapturedEnemyEchoView[];
-  readonly imprintKind: EnemyImprintKind | null;
-  readonly bladeBandWidth: number;
-  readonly age: number;
-}
-
-export interface LoopCutEchoView {
-  readonly position: Vec2;
-  readonly age: number;
-}
-
-export interface WardenAttackEchoView {
-  readonly kind: 'lash' | 'discharge';
-  readonly geometry: WardenAttackGeometry;
-  readonly age: number;
-}
-
-export interface PlaygroundRenderState {
-  readonly width: number;
-  readonly height: number;
-  readonly worldBounds: WorldBounds;
-  readonly camera: Camera2DSnapshot;
-  readonly elapsed: number;
-  readonly player: Vec2;
-  readonly playerVelocity: Vec2;
-  readonly warden: WardenSnapshot | null;
-  readonly enemies: readonly PlaygroundEnemyView[];
-  readonly projectiles: readonly PlaygroundProjectileView[];
-  readonly playerInvulnerability: number;
-  readonly activeImprint: EnemyImprintKind | null;
-  readonly bladeBandWidth: number;
-  readonly nerveFieldRadius: number;
-  readonly loopSamples: readonly Vec2[];
-  readonly loopPreview: LoopPreview | null;
-  readonly projectedLoopPreviews: readonly LoopClosure[];
-  readonly closureEcho: ClosureEchoView | null;
-  readonly loopCutEcho: LoopCutEchoView | null;
-  readonly wardenAttackEcho: WardenAttackEchoView | null;
-  readonly reducedMotion: boolean;
-  readonly reducedFlash: boolean;
-}
 
 export class LoopPlaygroundRenderer {
   private readonly worldLayer = new Container();

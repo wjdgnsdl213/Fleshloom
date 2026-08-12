@@ -1,4 +1,4 @@
-import { Application, Rectangle, Ticker } from 'pixi.js';
+import type { RendererHost } from '../presentation/RendererHost';
 import {
   nextAudioVolumeStep,
   PlaygroundAudio,
@@ -13,7 +13,7 @@ import {
   type MutationEffect,
   type MutationId,
 } from '../content/mutations';
-import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
+import { PLAYGROUND_TUNING } from '../config/graphics';
 import { PROGRESSION_BASELINE } from '../config/progression';
 import {
   QUARANTINE_WORLD_BOUNDS,
@@ -92,12 +92,11 @@ import {
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter';
 import { PointerInputAdapter } from '../input/PointerInputAdapter';
 import type { ChoiceIndex, InputIntent } from '../input/InputIntent';
-import {
-  LoopPlaygroundRenderer,
-  type CapturedEnemyEchoView,
-  type PlaygroundEnemyView,
-  type WardenAttackEchoView,
-} from '../presentation/LoopPlaygroundRenderer';
+import type {
+  CapturedEnemyEchoView,
+  PlaygroundEnemyView,
+  WardenAttackEchoView,
+} from '../presentation/RenderState';
 import { classifyCaptureFeedback } from '../presentation/CaptureFeedback';
 
 export interface GameStatus {
@@ -223,9 +222,8 @@ const INITIAL_ENEMY_SEEDS: readonly EnemySeed[] = Object.freeze([
 ]);
 
 export class GameApp {
-  private readonly app = new Application();
+  private canvas: HTMLCanvasElement | null = null;
   private readonly audio = new PlaygroundAudio();
-  private readonly renderer = new LoopPlaygroundRenderer();
   private readonly camera = new Camera2D({
     bounds: QUARANTINE_WORLD_BOUNDS,
     viewportWidth: 1,
@@ -289,31 +287,22 @@ export class GameApp {
 
   public constructor(
     private readonly onStatus: (status: GameStatus) => void,
+    private readonly rendererHost: RendererHost,
     private readonly options: GameAppOptions = {},
   ) {}
 
   public async start(host: HTMLElement): Promise<void> {
-    await this.app.init({
-      resizeTo: host,
-      antialias: true,
-      autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio, 2),
-      backgroundColor: GAMEPLAY_COLORS.void,
-    });
-
-    await this.renderer.loadAssets();
+    this.canvas = await this.rendererHost.init(host);
 
     this.reducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches;
 
-    this.app.canvas.className = 'game-canvas';
-    this.app.canvas.tabIndex = 0;
-    this.app.canvas.setAttribute('aria-label', 'FLESHLOOM 격리구역 사냥 화면');
-    host.appendChild(this.app.canvas);
+    this.canvas.className = 'game-canvas';
+    this.canvas.tabIndex = 0;
+    this.canvas.setAttribute('aria-label', 'FLESHLOOM 격리구역 사냥 화면');
     this.started = true;
-    this.renderer.attach(this.app.stage);
-    void this.renderer.loadDeferredAssets().catch(() => undefined);
+    void this.rendererHost.loadDeferredAssets().catch(() => undefined);
 
     this.player = {
       x: QUARANTINE_WORLD_START.x,
@@ -330,30 +319,20 @@ export class GameApp {
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('blur', this.handleBlur);
-    this.app.canvas.addEventListener('pointerdown', this.focusCanvas);
-    this.app.ticker.add(this.update);
+    this.canvas.addEventListener('pointerdown', this.focusCanvas);
+    this.rendererHost.addFrameListener(this.update);
 
     if (import.meta.env.DEV) {
       // Dev-only QA hook: renders the current viewport on demand and returns
       // a base64 PNG. Headless capture uses this because SwiftShader
-      // compositing never surfaces frames from the saturated game loop. The
-      // frame is clamped to the screen so the payload stays CDP-sized; dead
+      // compositing never surfaces frames from the saturated game loop. Dead
       // code in production builds, like qaScene.
       (window as unknown as Record<string, unknown>).__fleshloomQa = {
-        screenshot: () =>
-          this.app.renderer.extract.base64({
-            target: this.app.stage,
-            frame: new Rectangle(
-              0,
-              0,
-              this.app.screen.width,
-              this.app.screen.height,
-            ),
-          }),
+        screenshot: () => this.rendererHost.captureViewport(),
       };
     }
     if (this.started) {
-      this.app.canvas.focus();
+      this.canvas?.focus();
     }
     this.draw(null);
     this.publishStatus('title', 0, null);
@@ -371,7 +350,7 @@ export class GameApp {
     this.lastStatusSignature = '';
     this.publishStatus('idle', 0, null);
     if (this.started) {
-      this.app.canvas.focus();
+      this.canvas?.focus();
     }
   }
 
@@ -379,7 +358,7 @@ export class GameApp {
     this.audio.unlock();
     this.pointer.choiceButtonPress(index);
     if (this.started) {
-      this.app.canvas.focus();
+      this.canvas?.focus();
     }
   }
 
@@ -461,7 +440,7 @@ export class GameApp {
   }
 
   private readonly focusCanvas = (): void => {
-    this.app.canvas.focus();
+    this.canvas?.focus();
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -735,8 +714,8 @@ export class GameApp {
     }
   }
 
-  private readonly update = (ticker: Ticker): void => {
-    const deltaSeconds = Math.min(ticker.deltaMS / 1_000, 0.05);
+  private readonly update = (frameDeltaSeconds: number): void => {
+    const deltaSeconds = Math.min(frameDeltaSeconds, 0.05);
     const intent = this.consumeInputIntent();
     const runSceneAtFrameStart = this.runFlow.snapshot.scene;
 
@@ -1224,8 +1203,9 @@ export class GameApp {
   }
 
   private syncCameraViewport(): void {
-    const width = Math.max(1, this.app.screen.width);
-    const height = Math.max(1, this.app.screen.height);
+    const view = this.rendererHost.viewSize();
+    const width = Math.max(1, view.width);
+    const height = Math.max(1, view.height);
     const viewport = cameraViewportForScreen(
       width,
       height,
@@ -1296,18 +1276,19 @@ export class GameApp {
       QUARANTINE_WORLD_BOUNDS.maxX - QUARANTINE_WORLD_BOUNDS.minX;
     const worldHeight =
       QUARANTINE_WORLD_BOUNDS.maxY - QUARANTINE_WORLD_BOUNDS.minY;
+    const view = this.rendererHost.viewSize();
     const width = Math.min(
       worldWidth,
       Math.max(
         WORLD_TUNING.wardenArenaMinimumWidth,
-        this.app.screen.width + WORLD_TUNING.wardenArenaViewportPadding,
+        view.width + WORLD_TUNING.wardenArenaViewportPadding,
       ),
     );
     const height = Math.min(
       worldHeight,
       Math.max(
         WORLD_TUNING.wardenArenaMinimumHeight,
-        this.app.screen.height + WORLD_TUNING.wardenArenaViewportPadding,
+        view.height + WORLD_TUNING.wardenArenaViewportPadding,
       ),
     );
     return this.centeredWorldBounds(this.player, width, height);
@@ -1823,9 +1804,10 @@ export class GameApp {
           ).slice(1)
         : [];
 
-    this.renderer.render({
-      width: this.app.screen.width,
-      height: this.app.screen.height,
+    const view = this.rendererHost.viewSize();
+    this.rendererHost.render({
+      width: view.width,
+      height: view.height,
       worldBounds: QUARANTINE_WORLD_BOUNDS,
       camera: this.camera.snapshot,
       elapsed: this.presentationElapsed,
