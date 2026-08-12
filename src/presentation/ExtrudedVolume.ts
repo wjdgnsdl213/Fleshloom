@@ -12,7 +12,15 @@
  */
 
 import type { Vec2 } from '../core/geometry/vector';
+import { orientedQuadCorners } from '../core/geometry/obb';
 import { SCENE_SHADOW_DIRECTION } from './GroundedLighting';
+
+/**
+ * Footprint corner math moved to core (src/core/geometry/obb.ts) so the
+ * simulation-side collision resolver can share it; re-exported here for the
+ * presentation call sites.
+ */
+export { orientedQuadCorners };
 
 export interface ScreenOffset {
   readonly x: number;
@@ -68,37 +76,6 @@ export function volumeShadowOffset(height: number): ScreenOffset {
     x: SCENE_SHADOW_DIRECTION.x * reach,
     y: SCENE_SHADOW_DIRECTION.y * reach,
   });
-}
-
-/** Corners of an oriented rectangle, in consistent counter-clockwise order. */
-export function orientedQuadCorners(
-  center: Vec2,
-  length: number,
-  width: number,
-  angle: number,
-): readonly Vec2[] {
-  const halfLength = safeNumber(length) * 0.5;
-  const halfWidth = safeNumber(width) * 0.5;
-  const cos = Math.cos(safeNumber(angle));
-  const sin = Math.sin(safeNumber(angle));
-  const centerX = safeNumber(center.x);
-  const centerY = safeNumber(center.y);
-
-  return Object.freeze(
-    (
-      [
-        [-halfLength, -halfWidth],
-        [halfLength, -halfWidth],
-        [halfLength, halfWidth],
-        [-halfLength, halfWidth],
-      ] as const
-    ).map(([along, lateral]) =>
-      Object.freeze({
-        x: centerX + along * cos - lateral * sin,
-        y: centerY + along * sin + lateral * cos,
-      }),
-    ),
-  );
 }
 
 /**
