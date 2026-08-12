@@ -179,3 +179,13 @@ Open risks / decisions requested:
 - Result: Carrier, every mobile ordinary species, armored Drifter, and Elite Husk now alternate real contact/passing poses instead of translating one image. Stationary aim, telegraph, and stagger states hold a planted frame.
 - Performance: all eight runtime sheets total roughly 1.15MiB. Only Carrier/Drifter join startup; the other six retain deferred loading.
 - Verification: pure locomotion/manifest tests pass inside the final `npm run release:verify` gate: 39 files/331 tests, lint, strict TypeScript, build, public-copy/base-path checks, and 5.54MiB startup art. The managed browser limitation still prevents an honest live-motion screenshot/video pass.
+
+### 2026-08-12 / P7-2 living tether and radial capture pull
+
+- Agent and task: the primary agent recovered the interrupted P7-2 work, audited its renderer-only contract, completed the bitmap cleanup with the built-in image generation workflow, and integrated tests/documentation. No delegation was used.
+- Result: the active MeshRope uses a denser black-red braided texture with repeated ivory hooks. Both textured accents and the procedural fallback use world-distance hook spacing and opposite-phase strands. Closure retains the braid during contraction and captured bodies visibly pull inward before decomposition and reward intake.
+- Architecture: `LivingTetherGeometry` is pure presentation math and imports no Pixi objects. Simulation geometry, loop input, capture resolution, rewards, layered enemy stages, and accessibility settings were not changed.
+- Review fixes: the first draft rescanned the full path for every strand sample and cost about 13.45ms on a maximum zigzag path; shared cumulative sampling reduces the equivalent pure geometry work to about 0.07ms. A second review found nonmatching texture edges; the final lossless WebP has zero left/right alpha and visible premultiplied-color difference, a stored three-repeat preview, and a release-pinned SHA.
+- Verification: targeted tests pass 2 files/10 tests; final `npm run release:verify` passes 40 files/337 tests, lint, strict TypeScript, build, 20 public-file copies, 12 index references, 5.49MiB startup art, and 17.28MiB total public payload. The alpha WebP has transparent corners.
+- Milestone review: the read-only reviewer independently confirmed the performance and seamless-edge fixes, found no locked-rule, layered-capture, architecture, stale-path, or major performance regression, and returned GO. Live browser/device motion remains the only visual exit risk.
+- Open risk: browser discovery returned no available backend, so live tether bending, capture readability, narrow-screen scale, and frame pacing remain a manual visual gate.

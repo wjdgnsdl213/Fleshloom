@@ -10,7 +10,7 @@ export const ART_ASSET_PATHS = {
   mimic: 'assets/art/enemies/mimic.png',
   eliteHusk: 'assets/art/enemies/elite-husk.png',
   warden: 'assets/art/boss/warden.png',
-  tether: 'assets/art/loop/living-tether-tile.png',
+  tether: 'assets/art/loop/living-tether-tile-v2.webp',
   carrierWalk: 'assets/art/characters/animation/carrier-walk-sheet-v1.webp',
   drifterWalk: 'assets/art/characters/animation/drifter-walk-sheet-v1.webp',
   armoredDrifterWalk:

@@ -101,3 +101,19 @@ Carrier-09 remains one pooled bitmap but now has state-led deformation for
 movement stride, active-tether tension, and closure impact. The screen-space HUD
 borrows the approved styleframe's ivory integrity pips and narrow arterial
 progress meter while retaining the existing restrained diagnostic frame.
+
+### P7-2 living tether lock
+
+The active tether uses
+`public/assets/art/loop/living-tether-tile-v2.webp` as its production strip.
+Distance-based presentation geometry keeps black-tendon and arterial strands
+braided independently of loop sample density, while ivory hooks repeat at
+world-space intervals. The procedural version remains the load-failure fallback
+and uses the same spacing contract.
+
+Closure now preserves that material language through contraction. Captured
+bodies emit several curved black-red/tendon strands toward the closure centroid
+and Carrier-09 before decomposition and intake. These strands are feedback only:
+capture membership, layered peel rules, XP, and recovery remain unchanged. The
+source, final cleanup prompt, alpha validation, and runtime dimensions are
+recorded under `references/generated/production-art-v5/`.

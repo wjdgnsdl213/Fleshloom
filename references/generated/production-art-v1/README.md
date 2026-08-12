@@ -5,19 +5,21 @@ Created on 2026-08-12 with the built-in image generation tool. The approved
 camera reference only. All prompts explicitly prohibited copying characters,
 silhouettes, HUD, compositions, logos, and recognizable designs.
 
-## Runtime assets
+## Original runtime assets
 
 - `public/assets/art/characters/carrier-09.png`
 - `public/assets/art/characters/drifter.png`
 - `public/assets/art/environment/quarantine-street-v1.png`
-- `public/assets/art/loop/living-tether-tile.png`
+- `public/assets/art/loop/living-tether-tile.png` (superseded and removed from
+  `public/` by the P7-2 v2 WebP; its chroma source remains here)
 
 The character and tether source renders used a flat green background. Their
 unmodified outputs are preserved under `source/`. Runtime PNGs were processed
 with `remove_chroma_key.py` using border key sampling, a soft matte (14/88),
 0.65 px edge feathering, and despill cleanup. The earlier long tether strip is
-archived as `living-tether-strip.png`; the runtime uses the square repeat tile
-to avoid stretching material details around large loops.
+archived as `living-tether-strip.png`; this v1 set originally used the square
+repeat tile to avoid stretching material details around large loops. P7-2 now
+uses `public/assets/art/loop/living-tether-tile-v2.webp`.
 
 ## Final prompt set
 

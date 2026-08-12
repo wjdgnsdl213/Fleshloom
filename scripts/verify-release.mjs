@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   readFileSync,
@@ -15,11 +16,17 @@ const startupArtPaths = [
   'assets/art/environment/wet-asphalt-tile-v1.png',
   'assets/art/characters/carrier-09.png',
   'assets/art/characters/drifter.png',
-  'assets/art/loop/living-tether-tile.png',
+  'assets/art/loop/living-tether-tile-v2.webp',
   'assets/art/characters/animation/carrier-walk-sheet-v1.webp',
   'assets/art/characters/animation/drifter-walk-sheet-v1.webp',
 ];
 const startupBudgetBytes = 6 * 1024 * 1024;
+const verifiedArtHashes = new Map([
+  [
+    'assets/art/loop/living-tether-tile-v2.webp',
+    'aa4ae87caf789c89b436514725231e1aaa085aaa90a4e197934c4d912acd0cec',
+  ],
+]);
 
 function fail(message) {
   throw new Error(`[release] ${message}`);
@@ -47,6 +54,21 @@ for (const sourcePath of publicFiles) {
   }
   if (statSync(sourcePath).size > 0 && statSync(outputPath).size === 0) {
     fail(`copied public asset is empty: ${relativePath}`);
+  }
+}
+
+for (const [relativePath, expectedHash] of verifiedArtHashes) {
+  const path = join(publicRoot, relativePath);
+  if (!existsSync(path)) {
+    fail(`validated art asset is missing: ${relativePath}`);
+  }
+  const actualHash = createHash('sha256')
+    .update(readFileSync(path))
+    .digest('hex');
+  if (actualHash !== expectedHash) {
+    fail(
+      `validated art asset changed without a new visual audit: ${relativePath}`,
+    );
   }
 }
 

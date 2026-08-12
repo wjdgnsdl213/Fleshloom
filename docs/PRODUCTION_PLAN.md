@@ -38,7 +38,7 @@ Internal release target: 2026-08-25
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Manual gate pending |
-| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | P7-1 verification |
+| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | P7-2 implemented · manual visual gate |
 
 ## Workstream contracts
 
@@ -177,3 +177,14 @@ Internal release target: 2026-08-25
 - Startup waits only for the new 114KiB Carrier and 139KiB Drifter sheets; later species animation sheets remain deferred.
 - Verification: final `npm run release:verify` passes 39 files/331 tests, ESLint, strict TypeScript, production build, 20 public-file copies, base-path checks, and a 5.54MiB startup-art payload under the 6MiB budget.
 - Next: rebuild the living tether and capture contraction from the styleframe's braided black-red strands, ivory hook rhythm, and radial inward pull.
+
+### 2026-08-12 — P7-2 living tether implemented
+
+- Replaced the first tether strip with a 567KiB lossless alpha WebP built around braided charcoal biomass, a restrained arterial-red core, and repeating ivory hooks. Its wrap-aware boundaries match exactly in alpha and visible premultiplied color. Original, cleaned, and seamless chroma sources plus a three-repeat preview live under `references/generated/production-art-v5/`.
+- Added pure presentation geometry that samples by world distance instead of input point index. Hook cadence and two opposite-phase braids therefore remain stable when the same path has different sampling density.
+- The textured path and procedural fallback now share stronger hook/tendon accents. Closure keeps the braid visible while contracting, then draws curved tissue strands from each captured body toward the closure centroid and Carrier before decomposition/intake.
+- No game rule changed: movement remains active while tethering, closure validity and capture membership are unchanged, and layered enemies still resolve one capture stage at a time.
+- Performance review caught and fixed an initial repeated full-path scan. The final shared-sample implementation measures about 0.07ms for the pure active-tether geometry on a maximum 256-point zigzag path, down from about 13.45ms in the rejected draft.
+- Verification: targeted geometry/manifest tests pass 2 files/10 tests. Final `npm run release:verify` passes 40 files/337 tests, ESLint, strict TypeScript, production build, the reviewed tether SHA, 20 public-file copies, 12 index references, 5.49MiB startup art under the 6MiB budget, and 17.28MiB total public payload.
+- Manual visual risk: the Browser runtime reported no available backend. Live curve thickness, hook cadence, capture timing, and frame pacing still require owner inspection at laptop and phone widths.
+- Next: P7-3 representative-screen composition and a side-by-side styleframe fidelity pass.

@@ -39,9 +39,13 @@ import {
   WALK_CYCLE_TUNING,
   type WalkCycleSample,
 } from './Locomotion';
+import {
+  samplesAtSpacing,
+  type TetherPathSample,
+} from './LivingTetherGeometry';
 
 const TETHER_ROPE_POINT_COUNT = 64;
-const TETHER_ROPE_SCALE = 0.059;
+const TETHER_ROPE_SCALE = 0.086;
 const CAPTURE_RASTER_HOLD_END = 0.22;
 const CAPTURE_RASTER_FADE_END = 0.36;
 const ASPHALT_TILE_SCALE = 0.58;
@@ -2813,33 +2817,24 @@ export class LoopPlaygroundRenderer {
     points: readonly Vec2[],
     elapsed: number,
   ): void {
-    this.traceWovenStrand(graphics, points, elapsed);
-    graphics.stroke({
-      color: GAMEPLAY_COLORS.arterialBright,
-      width: 1.35,
-      alpha: 0.56,
-    });
+    this.drawBraidedTetherStrands(graphics, points, elapsed, 0.72);
 
-    const stride = Math.max(3, Math.ceil(points.length / 14));
-    for (let index = stride; index < points.length - 1; index += stride) {
-      const previous = points[Math.max(0, index - 1)]!;
-      const point = points[index]!;
-      const next = points[Math.min(points.length - 1, index + 1)]!;
-      const pathAngle = Math.atan2(
-        next.y - previous.y,
-        next.x - previous.x,
-      );
-      const side = Math.floor(index / stride) % 2 === 0 ? 1 : -1;
+    const hooks = samplesAtSpacing(points, 25, false, 12);
+    hooks.forEach((sample, index) => {
+      const side = index % 2 === 0 ? 1 : -1;
       this.drawShard(
         graphics,
-        point,
-        pathAngle + side * Math.PI * 0.5,
-        4.4,
-        1.65,
+        {
+          x: sample.position.x + sample.normal.x * side * 2.8,
+          y: sample.position.y + sample.normal.y * side * 2.8,
+        },
+        Math.atan2(sample.tangent.y, sample.tangent.x) + side * Math.PI * 0.62,
+        index % 4 === 0 ? 7.2 : 5.2,
+        index % 4 === 0 ? 2.5 : 1.9,
         GAMEPLAY_COLORS.bone,
-        0.58,
+        index % 4 === 0 ? 0.92 : 0.7,
       );
-    }
+    });
   }
 
   private drawLivingTether(
@@ -2850,72 +2845,107 @@ export class LoopPlaygroundRenderer {
     this.tracePath(graphics, points, false);
     graphics.stroke({
       color: GAMEPLAY_COLORS.void,
-      width: 15,
-      alpha: 0.97,
+      width: 20,
+      alpha: 0.98,
     });
-    this.tracePath(graphics, points, false);
-    graphics.stroke({
-      color: GAMEPLAY_COLORS.tendon,
-      width: 10,
-      alpha: 0.52,
-    });
-    this.tracePath(graphics, points, false);
-    graphics.stroke({
-      color: GAMEPLAY_COLORS.asphaltLight,
-      width: 6.5,
-      alpha: 0.96,
-    });
-    this.traceWovenStrand(graphics, points, elapsed);
-    graphics.stroke({
-      color: GAMEPLAY_COLORS.arterialBright,
-      width: 2.5,
-      alpha: 0.88,
-    });
+    this.drawBraidedTetherStrands(graphics, points, elapsed, 1);
 
-    const stride = Math.max(2, Math.ceil(points.length / 22));
-    for (let index = stride; index < points.length - 1; index += stride) {
-      const previous = points[Math.max(0, index - 1)]!;
-      const point = points[index]!;
-      const next = points[Math.min(points.length - 1, index + 1)]!;
-      const angle = Math.atan2(next.y - previous.y, next.x - previous.x);
-      const side = Math.floor(index / stride) % 2 === 0 ? 1 : -1;
-      const normalAngle = angle + side * Math.PI * 0.5;
-      const pulse = 0.75 + Math.sin(elapsed * 7 + index * 0.9) * 0.12;
-      const boneBarb = Math.floor(index / stride) % 3 === 0;
+    const hooks = samplesAtSpacing(points, 23, false, 10);
+    hooks.forEach((sample, index) => {
+      const side = index % 2 === 0 ? 1 : -1;
+      const pulse = 0.92 + Math.sin(elapsed * 3.8 + index * 0.72) * 0.08;
+      const boneBarb = index % 3 === 0;
 
       this.drawShard(
         graphics,
-        point,
-        normalAngle,
-        (boneBarb ? 7 : 4.5) * pulse,
-        boneBarb ? 2.5 : 1.8,
+        {
+          x: sample.position.x + sample.normal.x * side * 4,
+          y: sample.position.y + sample.normal.y * side * 4,
+        },
+        Math.atan2(sample.tangent.y, sample.tangent.x) + side * Math.PI * 0.62,
+        (boneBarb ? 9.2 : 6.2) * pulse,
+        boneBarb ? 3.4 : 2.35,
         boneBarb ? GAMEPLAY_COLORS.bone : GAMEPLAY_COLORS.tendon,
-        boneBarb ? 0.78 : 0.56,
+        boneBarb ? 0.94 : 0.68,
       );
-    }
+    });
   }
 
-  private traceWovenStrand(
+  private drawBraidedTetherStrands(
     graphics: Graphics,
     points: readonly Vec2[],
     elapsed: number,
+    alpha: number,
   ): void {
-    for (let index = 0; index < points.length; index += 1) {
-      const point = points[index]!;
-      const previous = points[Math.max(0, index - 1)]!;
-      const next = points[Math.min(points.length - 1, index + 1)]!;
-      const dx = next.x - previous.x;
-      const dy = next.y - previous.y;
-      const length = Math.max(1, Math.hypot(dx, dy));
-      const offset = Math.sin(index * 1.55 + elapsed * 5.8) * 1.55;
-      const x = point.x + (-dy / length) * offset;
-      const y = point.y + (dx / length) * offset;
+    const livingPhase = elapsed * 2.4;
+    const samples = samplesAtSpacing(points, 7);
 
-      if (index === 0) {
-        graphics.moveTo(x, y);
-      } else {
-        graphics.lineTo(x, y);
-      }
+    for (const phaseOffset of [livingPhase, livingPhase + Math.PI]) {
+      this.traceTetherStrand(graphics, samples, 3.8, 32, phaseOffset, false);
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.asphaltLight,
+        width: 7,
+        alpha: alpha * 0.96,
+      });
+      this.traceTetherStrand(graphics, samples, 3.8, 32, phaseOffset, false);
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.tendon,
+        width: 2.2,
+        alpha: alpha * 0.48,
+      });
+    }
+
+    const arteryPhase = -livingPhase * 1.2;
+    for (const phaseOffset of [arteryPhase, arteryPhase + Math.PI]) {
+      this.traceTetherStrand(graphics, samples, 1.8, 25, phaseOffset, false);
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.arterial,
+        width: 3.2,
+        alpha: alpha * 0.9,
+      });
+      this.traceTetherStrand(graphics, samples, 1.8, 25, phaseOffset, false);
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.arterialBright,
+        width: 1.05,
+        alpha: alpha * 0.86,
+      });
+    }
+  }
+
+  private traceTetherStrand(
+    graphics: Graphics,
+    samples: readonly TetherPathSample[],
+    amplitude: number,
+    wavelength: number,
+    phaseOffset: number,
+    closed: boolean,
+  ): void {
+    const first = samples[0];
+    if (first === undefined || wavelength <= 0) {
+      return;
+    }
+
+    const firstOffset =
+      Math.sin((first.distance / wavelength) * Math.PI * 2 + phaseOffset) *
+      amplitude;
+    graphics.moveTo(
+      first.position.x + first.normal.x * firstOffset,
+      first.position.y + first.normal.y * firstOffset,
+    );
+
+    for (let index = 1; index < samples.length; index += 1) {
+      const sample = samples[index]!;
+      const offset =
+        Math.sin((sample.distance / wavelength) * Math.PI * 2 + phaseOffset) *
+        amplitude;
+      graphics.lineTo(
+        sample.position.x + sample.normal.x * offset,
+        sample.position.y + sample.normal.y * offset,
+      );
+    }
+
+    if (closed) {
+      graphics.closePath();
     }
   }
 
@@ -3256,6 +3286,13 @@ export class LoopPlaygroundRenderer {
       width: 2.4 - contraction * 0.8,
       alpha: ringFade * 0.88,
     });
+    this.drawContractingBraid(
+      graphics,
+      contracted,
+      ringFade,
+      contraction,
+      progress,
+    );
 
     this.drawRingSpines(
       graphics,
@@ -3275,6 +3312,13 @@ export class LoopPlaygroundRenderer {
       progress,
     );
     this.drawLayeredCaptureEcho(graphics, closureEcho.capturedEnemies, progress);
+    this.drawRadialCapturePull(
+      graphics,
+      closureEcho.capturedEnemies,
+      centroid,
+      player,
+      progress,
+    );
     this.drawDecomposition(
       graphics,
       closureEcho.capturedEnemies.length === 0
@@ -3424,6 +3468,124 @@ export class LoopPlaygroundRenderer {
         alpha * 0.9,
       );
     }
+  }
+
+  private drawContractingBraid(
+    graphics: Graphics,
+    points: readonly Vec2[],
+    alpha: number,
+    contraction: number,
+    progress: number,
+  ): void {
+    const amplitude = 3.6 * (1 - contraction * 0.55);
+    const phaseOffset = progress * Math.PI * 8;
+    const samples = samplesAtSpacing(points, 7, true);
+    for (const strandPhase of [phaseOffset, phaseOffset + Math.PI]) {
+      this.traceTetherStrand(
+        graphics,
+        samples,
+        amplitude,
+        30,
+        strandPhase,
+        true,
+      );
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.asphaltLight,
+        width: 3.8 - contraction * 1.2,
+        alpha: alpha * 0.78,
+      });
+    }
+
+    for (const strandPhase of [-phaseOffset, -phaseOffset + Math.PI]) {
+      this.traceTetherStrand(
+        graphics,
+        samples,
+        1.7,
+        21,
+        strandPhase,
+        true,
+      );
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.arterialBright,
+        width: 1.2,
+        alpha: alpha * 0.9,
+      });
+    }
+  }
+
+  private drawRadialCapturePull(
+    graphics: Graphics,
+    capturedEnemies: readonly CapturedEnemyEchoView[],
+    centroid: Vec2,
+    player: Vec2,
+    progress: number,
+  ): void {
+    const pull = phase(progress, 0.18, 0.72);
+    const alpha = windowPulse(progress, 0.12, 0.78);
+    if (pull <= 0 || alpha <= 0) {
+      return;
+    }
+
+    capturedEnemies.forEach((enemy, enemyIndex) => {
+      const toCenter = {
+        x: centroid.x - enemy.position.x,
+        y: centroid.y - enemy.position.y,
+      };
+      const distance = Math.max(1, Math.hypot(toCenter.x, toCenter.y));
+      const tangent = { x: toCenter.x / distance, y: toCenter.y / distance };
+      const normal = { x: -tangent.y, y: tangent.x };
+      const strandCount = enemy.captureLayer === 'peeled' ? 3 : 5;
+
+      for (let strand = 0; strand < strandCount; strand += 1) {
+        const side = strand - (strandCount - 1) / 2;
+        const start = {
+          x:
+            enemy.position.x +
+            normal.x * side * enemy.radius * 0.28 -
+            tangent.x * enemy.radius * 0.2,
+          y:
+            enemy.position.y +
+            normal.y * side * enemy.radius * 0.28 -
+            tangent.y * enemy.radius * 0.2,
+        };
+        const target = lerpVec2(centroid, player, 0.24 + pull * 0.32);
+        const end = lerpVec2(start, target, easeInOutCubic(pull));
+        const firstControl = lerpVec2(start, end, 0.34);
+        const secondControl = lerpVec2(start, end, 0.72);
+        const controlOne = { x: firstControl.x, y: firstControl.y };
+        const controlTwo = { x: secondControl.x, y: secondControl.y };
+        const wave =
+          Math.sin(progress * 31 + enemyIndex * 2.7 + strand * 1.8) *
+          (8 - pull * 5);
+        controlOne.x += normal.x * wave;
+        controlOne.y += normal.y * wave;
+        controlTwo.x -= normal.x * wave * 0.65;
+        controlTwo.y -= normal.y * wave * 0.65;
+
+        this.drawBezierStroke(
+          graphics,
+          start,
+          controlOne,
+          controlTwo,
+          end,
+          GAMEPLAY_COLORS.void,
+          4.4 - pull * 1.6,
+          alpha * 0.9,
+        );
+        this.drawBezierStroke(
+          graphics,
+          start,
+          controlOne,
+          controlTwo,
+          end,
+          strand % 2 === 0
+            ? GAMEPLAY_COLORS.arterialBright
+            : GAMEPLAY_COLORS.tendon,
+          1.15,
+          alpha * (strand % 2 === 0 ? 0.92 : 0.58),
+        );
+      }
+    });
   }
 
   private drawCapturedDrifterRemnants(
