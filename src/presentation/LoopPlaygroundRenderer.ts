@@ -9,6 +9,7 @@ import {
   TilingSprite,
 } from 'pixi.js';
 import type { EnemyImprintKind } from '../content/enemies';
+import type { EnemyCaptureProfile } from '../content/enemies';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
 import {
   DISTRICT_BIOMASS,
@@ -104,6 +105,9 @@ export interface PlaygroundEnemyView {
   readonly radius: number;
   readonly phase: number;
   readonly alive: boolean;
+  readonly captureProfile?: EnemyCaptureProfile;
+  readonly armored?: boolean;
+  readonly staggerRemaining?: number;
 }
 
 export interface PlaygroundProjectileView {
@@ -119,6 +123,7 @@ export interface CapturedEnemyEchoView {
   readonly radius: number;
   readonly phase: number;
   readonly captureLayer: 'ordinary' | 'peeled' | 'killed';
+  readonly captureProfile?: EnemyCaptureProfile;
 }
 
 export interface ClosureEchoView {
@@ -1014,9 +1019,12 @@ export class LoopPlaygroundRenderer {
       baseScale * tuning.scaleY * (1 + breath),
     );
     sprite.alpha = 0.98;
-    sprite.tint = hasDedicatedTexture
-      ? this.productionEnemyTint(enemy.archetype, enemy.behaviorState)
-      : this.drifterFallbackTint(enemy.archetype, enemy.behaviorState);
+    sprite.tint =
+      enemy.captureProfile === 'armored' && enemy.armored === false
+        ? 0xff806c
+        : hasDedicatedTexture
+          ? this.productionEnemyTint(enemy.archetype, enemy.behaviorState)
+          : this.drifterFallbackTint(enemy.archetype, enemy.behaviorState);
     sprite.visible = true;
   }
 
@@ -1076,6 +1084,61 @@ export class LoopPlaygroundRenderer {
     elapsed: number,
   ): void {
     const facingAngle = Math.atan2(enemy.facing.y, enemy.facing.x);
+
+    if (enemy.archetype === 'drifter' && enemy.captureProfile === 'armored') {
+      const armored = enemy.armored === true;
+      const pulse =
+        1 + Math.sin(elapsed * (armored ? 3.8 : 10.5) + enemy.phase) * 0.07;
+
+      if (armored) {
+        graphics
+          .circle(
+            enemy.position.x,
+            enemy.position.y,
+            enemy.radius * 1.08 * pulse,
+          )
+          .stroke({
+            color: GAMEPLAY_COLORS.bone,
+            width: 4.5,
+            alpha: 0.68,
+          });
+        for (let index = 0; index < 6; index += 1) {
+          const angle = enemy.phase + (index / 6) * Math.PI * 2;
+          const base = {
+            x: enemy.position.x + Math.cos(angle) * enemy.radius * 0.82,
+            y: enemy.position.y + Math.sin(angle) * enemy.radius * 0.82,
+          };
+          this.drawShard(
+            graphics,
+            base,
+            angle + Math.PI * 0.5,
+            enemy.radius * 0.72,
+            enemy.radius * 0.24,
+            GAMEPLAY_COLORS.bone,
+            0.88,
+          );
+        }
+      } else {
+        graphics
+          .circle(
+            enemy.position.x,
+            enemy.position.y,
+            enemy.radius * 0.72 * pulse,
+          )
+          .stroke({
+            color: GAMEPLAY_COLORS.arterialBright,
+            width: enemy.behaviorState === 'staggered' ? 4 : 2.4,
+            alpha: enemy.behaviorState === 'staggered' ? 0.92 : 0.64,
+          });
+        graphics
+          .circle(enemy.position.x, enemy.position.y, enemy.radius * 0.22)
+          .fill({
+            color: GAMEPLAY_COLORS.arterialBright,
+            alpha: 0.58,
+          });
+      }
+      return;
+    }
 
     if (enemy.archetype === 'rusher') {
       const hornBase = {
@@ -1406,6 +1469,10 @@ export class LoopPlaygroundRenderer {
 
     closureEcho.capturedEnemies.forEach((enemy, index) => {
       const sprite = this.ensureCapturedEchoSprite(index);
+      if (enemy.captureLayer === 'peeled') {
+        sprite.visible = false;
+        return;
+      }
       const angle = Math.atan2(
         player.y - enemy.position.y,
         player.x - enemy.position.x,
@@ -1413,12 +1480,7 @@ export class LoopPlaygroundRenderer {
       const twitch = Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.025;
       const breath = Math.sin(elapsed * 2.2 + enemy.phase) * 0.022;
       const baseScale = (enemy.radius * 4.7) / this.drifterTexture!.height;
-      const layerScale =
-        enemy.captureLayer === 'peeled'
-          ? 1.16
-          : enemy.captureLayer === 'killed'
-            ? 0.84
-            : 1;
+      const layerScale = enemy.captureLayer === 'killed' ? 0.84 : 1;
 
       sprite.texture = this.drifterTexture!;
       sprite.position.set(enemy.position.x, enemy.position.y);
@@ -1441,7 +1503,9 @@ export class LoopPlaygroundRenderer {
                   ? enemy.captureLayer === 'killed'
                     ? 0xff6f5e
                     : 0xc6b79e
-            : 0xffffff;
+                  : enemy.captureProfile === 'armored'
+                    ? 0xff806c
+                    : 0xffffff;
       sprite.visible = true;
     });
 
@@ -3012,10 +3076,14 @@ export class LoopPlaygroundRenderer {
       player,
       progress,
     );
-    this.drawEliteLayerEcho(graphics, closureEcho.capturedEnemies, progress);
+    this.drawLayeredCaptureEcho(graphics, closureEcho.capturedEnemies, progress);
     this.drawDecomposition(
       graphics,
-      closureEcho.capturedPositions,
+      closureEcho.capturedEnemies.length === 0
+        ? closureEcho.capturedPositions
+        : closureEcho.capturedEnemies
+            .filter((enemy) => enemy.captureLayer !== 'peeled')
+            .map((enemy) => enemy.position),
       centroid,
       progress,
     );
@@ -3043,7 +3111,7 @@ export class LoopPlaygroundRenderer {
     }
   }
 
-  private drawEliteLayerEcho(
+  private drawLayeredCaptureEcho(
     graphics: Graphics,
     enemies: readonly CapturedEnemyEchoView[],
     progress: number,
@@ -3054,7 +3122,10 @@ export class LoopPlaygroundRenderer {
     }
 
     for (const enemy of enemies) {
-      if (enemy.archetype !== 'elite-husk') {
+      if (
+        enemy.archetype !== 'elite-husk' &&
+        enemy.captureProfile !== 'armored'
+      ) {
         continue;
       }
       if (enemy.captureLayer === 'peeled') {
@@ -3064,8 +3135,9 @@ export class LoopPlaygroundRenderer {
           width: 7 - progress * 4,
           alpha: pulse * 0.86,
         });
-        for (let index = 0; index < 9; index += 1) {
-          const angle = enemy.phase + (index / 9) * Math.PI * 2;
+        const shardCount = enemy.archetype === 'elite-husk' ? 9 : 6;
+        for (let index = 0; index < shardCount; index += 1) {
+          const angle = enemy.phase + (index / shardCount) * Math.PI * 2;
           this.drawShard(
             graphics,
             {
@@ -3164,6 +3236,9 @@ export class LoopPlaygroundRenderer {
     progress: number,
   ): void {
     capturedEnemies.forEach((enemy, enemyIndex) => {
+      if (enemy.captureLayer === 'peeled') {
+        return;
+      }
       const stagger = Math.min(0.08, enemyIndex * 0.012);
       const tear = easeInOutCubic(
         phase(progress, 0.1 + stagger, 0.56 + stagger),

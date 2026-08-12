@@ -1,5 +1,7 @@
 export type EnemyArchetype = 'drifter' | 'rusher' | 'watcher';
 
+export type EnemyCaptureProfile = 'ordinary' | 'armored';
+
 export type EnemyImprintKind = 'blade' | 'nerve' | 'spike' | 'symmetry';
 
 export interface EnemyDefinitionBase {

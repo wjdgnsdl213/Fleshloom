@@ -35,8 +35,8 @@ Internal release target: 2026-08-25
 | P1 | Korean player-facing choices | 변이·임프린트 선택 이름/설명/수치 한국어화 | Complete |
 | P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | Complete |
 | P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Complete |
-| P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Pending |
-| P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Pending |
+| P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
+| P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | In progress |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Pending |
 
 ## Workstream contracts
@@ -130,3 +130,13 @@ Internal release target: 2026-08-25
 - 검증: 전체 `npm run check`가 32파일/307개 테스트, lint, TypeScript, production build를 통과했다. 개발 서버의 진입점과 새 타일 URL도 HTTP 200을 반환했다.
 - 남은 시각 검증: 자동 브라우저 런타임을 사용할 수 없어 전체 맵 이동 시 타일 이음새, 경계 밀도와 좁은 화면 구도는 수동 플레이 확인이 필요하다.
 - Next: P4 한 번에 죽지 않는 2회 포획 중장갑 일반 적과 난이도 곡선.
+
+### 2026-08-12 — P4 complete
+
+- The first three-minute onboarding remains unchanged: Drifters, Rushers, and Watchers still die to one valid closure.
+- A data-driven armored Drifter joins after the checkpoint at 1-in-4, 1-in-3, then 1-in-2 of scheduled Drifter spawns as the run advances.
+- Its first closure permanently peels the shell, grants 7 XP/2 recovery, and staggers it for 0.8 seconds. A later closure kills it and grants a separate 14 XP/4 recovery. Dead captures pay nothing.
+- Armored and exposed states have shape-led presentation: six ivory shell plates and a segmented rim become an arterial exposed core; peeling emits bone shards without playing the full body decomposition.
+- Verification: targeted state/content/model/integration coverage passes 4 files/24 tests. Final `npm run check` passes 35 files/317 tests, ESLint, strict TypeScript, and the production build.
+- Manual visual risk: the configured controllable browser backend remains unavailable, so armor readability at gameplay scale still needs an owner play check.
+- Next: P5 production presentation polish across actors, closure VFX, HUD, and audio.

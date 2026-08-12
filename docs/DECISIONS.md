@@ -141,3 +141,10 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Status: accepted
 - Decision: the 3,200×1,800 district repeats one quiet wet-asphalt material under deterministic world-space decals, puddles, vents, emergency lights, biomass colonies, and a continuous concrete perimeter. Normal enemies enter through one of four camera-excluded spawn bands and continue simulating against the full world.
 - Reason: separating reusable ground material from authored landmarks prevents an obviously stretched arena, gives traversal recognizable places, keeps effects screen-readable, and guarantees that new enemies do not visibly pop into existence.
+
+## D-021 — Armored Drifters use persistent two-capture shells
+
+- Date: 2026-08-12
+- Status: accepted
+- Decision: ordinary onboarding enemies remain one-capture prey. After 3:00, a deterministic share of Drifter spawns gains a persistent shell: the first closure peels and staggers it, while a later closure kills it. The shell does not reform, and each layer owns a separate one-time reward.
+- Reason: persistent exposure makes the second-loop requirement unambiguous, avoids hidden HP, preserves the early kill-moment lesson, and adds visible mid-run target priority without consuming wave RNG.

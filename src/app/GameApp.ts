@@ -4,6 +4,7 @@ import {
   PlaygroundAudio,
 } from '../audio/PlaygroundAudio';
 import type { EnemyArchetype, EnemyImprintKind } from '../content/enemies';
+import { captureProfileForDrifterSpawn } from '../content/armoredDrifters';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
 import {
   APEX_MUTATION_ID,
@@ -231,6 +232,7 @@ export class GameApp {
   private warden: WardenModel | null = null;
   private wardenArenaBounds: EnemyArenaBounds | null = null;
   private nextProjectileId = 1;
+  private postCheckpointDrifterSequence = 0;
 
   private player = { x: 0, y: 0 };
   private playerVelocity = { x: 0, y: 0 };
@@ -1056,8 +1058,8 @@ export class GameApp {
         this.applyContactDamage(
           snapshot.id,
           snapshot.position,
-          enemy.definition.radius,
-          enemy.definition.contactDamage,
+          snapshot.radius,
+          snapshot.contactDamage,
         )
       ) {
         return;
@@ -1301,7 +1303,24 @@ export class GameApp {
         case 'elite-husk':
           this.eliteHusks.push(new EliteHuskModel(request));
           break;
-        case 'drifter':
+        case 'drifter': {
+          if (request.scheduledAtSeconds >= 180) {
+            this.postCheckpointDrifterSequence += 1;
+          }
+          this.enemies.push(
+            new EnemyModel({
+              id: request.id,
+              archetype: request.archetype,
+              position: request.position,
+              phase: request.phase,
+              captureProfile: captureProfileForDrifterSpawn(
+                request.scheduledAtSeconds,
+                this.postCheckpointDrifterSequence,
+              ),
+            }),
+          );
+          break;
+        }
         case 'rusher':
         case 'watcher':
           this.enemies.push(
@@ -1462,14 +1481,20 @@ export class GameApp {
       }
 
       const definition = enemy.definition;
+      const result = enemy.capture();
+      if (result.kind === 'ignored') {
+        continue;
+      }
       capturedEnemies.push({
         archetype: snapshot.archetype,
         position: snapshot.position,
-        radius: definition.radius,
+        radius: snapshot.radius,
         phase: snapshot.phase,
-        captureLayer: 'ordinary',
+        captureLayer:
+          snapshot.captureProfile === 'armored' ? result.kind : 'ordinary',
+        captureProfile: snapshot.captureProfile,
       });
-      recovery += definition.captureRecovery + carrionBonus;
+      recovery += result.reward.recovery + carrionBonus;
       if (
         activeImprint === 'spike' &&
         definition.archetype === 'rusher'
@@ -1478,12 +1503,11 @@ export class GameApp {
           PROGRESSION_BASELINE.spikeRusherRecoveryBonus +
           this.mutationRank('spike-crown') * 2;
       }
-      xp += definition.xp * copyXpMultiplier(hit.projectionIndex);
-      if (definition.imprintKind !== undefined) {
+      xp += result.reward.xp * copyXpMultiplier(hit.projectionIndex);
+      if (result.kind === 'killed' && definition.imprintKind !== undefined) {
         imprintKinds.push(definition.imprintKind);
         this.gatheredImprints.add(definition.imprintKind);
       }
-      enemy.kill();
     }
 
     for (const cutter of this.cutters) {
@@ -1712,9 +1736,12 @@ export class GameApp {
             facing: snapshot.facing,
             behaviorState: snapshot.behaviorState,
             lockedTarget: snapshot.lockedTarget,
-            radius: enemy.definition.radius,
+            radius: snapshot.radius,
             phase: snapshot.phase,
             alive: snapshot.alive,
+            captureProfile: snapshot.captureProfile,
+            armored: snapshot.armored,
+            staggerRemaining: snapshot.staggerRemaining,
           };
         }),
         ...this.cutters.map((enemy): PlaygroundEnemyView => {
@@ -2016,6 +2043,7 @@ export class GameApp {
     this.warden = null;
     this.wardenArenaBounds = null;
     this.nextProjectileId = 1;
+    this.postCheckpointDrifterSequence = 0;
     this.choiceClock.reset();
     this.keyboard.reset();
     this.pointer.reset();

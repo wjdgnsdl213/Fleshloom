@@ -138,6 +138,12 @@ Title: **FLESHLOOM** (confirmed 2026-08-11)
 
 ## Open play-test questions
 
+### Armored Drifter production rule
+
+- The proven 0:00–3:00 onboarding keeps one-closure ordinary enemies.
+- From 3:00 onward, a scheduled share of Drifters has a visible ivory shell. The first valid loop permanently removes the shell and briefly staggers the exposed body; a later valid loop kills it.
+- Peel and final-kill rewards are independent and lifetime-once. This is a layered capture rule, not an HP bar.
+
 - 토글 기본값이 첫 포획 성공률을 높이는가, 홀드 옵션을 찾고 이해할 수 있는가?
 - 유효 루프 최소 면적과 스냅 반경이 초보자에게 충분히 관대한가?
 - 임프린트 후보 선택이 전투 리듬을 깨는가?

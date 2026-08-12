@@ -2,9 +2,16 @@ import {
   ENEMY_DEFINITIONS,
   getEnemyDefinition,
   type EnemyArchetype,
+  type EnemyCaptureProfile,
   type EnemyDefinition,
 } from '../../content/enemies';
+import { ARMORED_DRIFTER_BALANCE } from '../../content/armoredDrifters';
 import type { Vec2 } from '../../core/geometry/vector';
+import {
+  ArmoredCaptureState,
+  type ArmoredCaptureResult,
+} from './ArmoredCaptureState';
+import type { CaptureReward } from './LayeredCaptureState';
 
 export const MAX_ENEMY_STEP_SECONDS = 0.1;
 
@@ -21,6 +28,7 @@ export interface EnemySpawn {
   readonly archetype: EnemyArchetype;
   readonly position: Vec2;
   readonly phase: number;
+  readonly captureProfile?: EnemyCaptureProfile;
 }
 
 export interface EnemyArenaBounds {
@@ -39,6 +47,7 @@ export type EnemyBehaviorState =
   | 'locking'
   | 'positioning'
   | 'recover'
+  | 'staggered'
   | 'telegraph';
 
 export interface EnemySnapshot {
@@ -48,6 +57,11 @@ export interface EnemySnapshot {
   readonly velocity: Vec2;
   readonly facing: Vec2;
   readonly phase: number;
+  readonly radius: number;
+  readonly contactDamage: number;
+  readonly captureProfile: EnemyCaptureProfile;
+  readonly armored: boolean;
+  readonly staggerRemaining: number;
   readonly alive: boolean;
   readonly behaviorState: EnemyBehaviorState;
   /** Seconds remaining in the current timed state, or zero when untimed. */
@@ -66,6 +80,13 @@ export interface EnemyProjectileSpawnAction {
 }
 
 export type EnemyAction = EnemyProjectileSpawnAction;
+
+export type EnemyCaptureResult =
+  | ArmoredCaptureResult
+  | {
+      readonly kind: 'killed';
+      readonly reward: CaptureReward;
+    };
 
 const isFinitePositive = (value: number): boolean =>
   Number.isFinite(value) && value > 0;
@@ -101,6 +122,8 @@ export class EnemyModel {
   private readonly id: string;
   private readonly archetype: EnemyArchetype;
   private readonly phase: number;
+  private readonly captureProfile: EnemyCaptureProfile;
+  private readonly armoredCapture: ArmoredCaptureState | null;
   private readonly position: MutableVec2;
   private readonly velocity: MutableVec2 = { x: 0, y: 0 };
   private readonly facing: MutableVec2 = { x: 0, y: 1 };
@@ -123,9 +146,23 @@ export class EnemyModel {
       throw new RangeError('enemy phase must be finite');
     }
 
+    const captureProfile = spawn.captureProfile ?? 'ordinary';
+    if (captureProfile === 'armored' && spawn.archetype !== 'drifter') {
+      throw new RangeError('only Drifters support the armored capture profile');
+    }
+
     this.id = spawn.id;
     this.archetype = spawn.archetype;
     this.phase = spawn.phase;
+    this.captureProfile = captureProfile;
+    this.armoredCapture =
+      captureProfile === 'armored'
+        ? new ArmoredCaptureState({
+            staggerSeconds: ARMORED_DRIFTER_BALANCE.staggerSeconds,
+            peelReward: ARMORED_DRIFTER_BALANCE.peelReward,
+            finalReward: ARMORED_DRIFTER_BALANCE.finalReward,
+          })
+        : null;
     this.position = { x: spawn.position.x, y: spawn.position.y };
     this.behaviorState = initialBehaviorState(spawn.archetype);
   }
@@ -134,7 +171,20 @@ export class EnemyModel {
     return getEnemyDefinition(this.archetype);
   }
 
+  public get radius(): number {
+    return this.captureProfile === 'armored'
+      ? ARMORED_DRIFTER_BALANCE.radius
+      : this.definition.radius;
+  }
+
+  public get contactDamage(): number {
+    return this.captureProfile === 'armored'
+      ? ARMORED_DRIFTER_BALANCE.contactDamage
+      : this.definition.contactDamage;
+  }
+
   public get snapshot(): EnemySnapshot {
+    const armor = this.armoredCapture?.snapshot;
     return Object.freeze({
       id: this.id,
       archetype: this.archetype,
@@ -142,8 +192,16 @@ export class EnemyModel {
       velocity: frozenVec2(this.velocity),
       facing: frozenVec2(this.facing),
       phase: this.phase,
+      radius: this.radius,
+      contactDamage: this.contactDamage,
+      captureProfile: this.captureProfile,
+      armored: armor?.armored ?? false,
+      staggerRemaining: armor?.staggerRemaining ?? 0,
       alive: this.alive,
-      behaviorState: this.behaviorState,
+      behaviorState:
+        this.alive && (armor?.staggerRemaining ?? 0) > 0
+          ? 'staggered'
+          : this.behaviorState,
       behaviorTimer: this.behaviorTimer,
       lockedTarget:
         this.lockedTarget === null ? null : frozenVec2(this.lockedTarget),
@@ -170,6 +228,14 @@ export class EnemyModel {
 
     const cappedDelta = Math.min(deltaSeconds, MAX_ENEMY_STEP_SECONDS);
     this.clampToBounds(bounds);
+
+    const wasStaggered =
+      (this.armoredCapture?.snapshot.staggerRemaining ?? 0) > 0;
+    this.armoredCapture?.update(cappedDelta);
+    if (wasStaggered) {
+      this.stop();
+      return NO_ACTIONS;
+    }
 
     let actions: EnemyAction[] | null = null;
 
@@ -204,8 +270,34 @@ export class EnemyModel {
     this.stop();
   }
 
+  public capture(): EnemyCaptureResult {
+    if (!this.alive) {
+      return Object.freeze({ kind: 'ignored', reason: 'dead' });
+    }
+
+    if (this.armoredCapture !== null) {
+      const result = this.armoredCapture.capture();
+      if (result.kind === 'killed') {
+        this.kill();
+      }
+      return result;
+    }
+
+    const reward = Object.freeze({
+      xp: this.definition.xp,
+      recovery: this.definition.captureRecovery,
+    });
+    this.kill();
+    return Object.freeze({ kind: 'killed', reward });
+  }
+
   private stepDrifter(deltaSeconds: number, playerPosition: Vec2): void {
-    this.moveToward(playerPosition, ENEMY_DEFINITIONS.drifter.baseSpeed, deltaSeconds);
+    const speed =
+      ENEMY_DEFINITIONS.drifter.baseSpeed *
+      (this.captureProfile === 'armored'
+        ? ARMORED_DRIFTER_BALANCE.speedFactor
+        : 1);
+    this.moveToward(playerPosition, speed, deltaSeconds);
   }
 
   private stepRusher(deltaSeconds: number, playerPosition: Vec2): void {
@@ -536,7 +628,7 @@ export class EnemyModel {
   }
 
   private clampToBounds(bounds: EnemyArenaBounds): void {
-    const radius = this.definition.radius;
+    const radius = this.radius;
     const minX = bounds.minX + radius;
     const maxX = bounds.maxX - radius;
     const minY = bounds.minY + radius;

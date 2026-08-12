@@ -155,6 +155,77 @@ describe('EnemyModel', () => {
     expect(enemy.snapshot.behaviorState).toBe('chase');
   });
 
+  it('requires two separate captures for an armored Drifter', () => {
+    const enemy = new EnemyModel({
+      id: 'armored-drifter',
+      archetype: 'drifter',
+      position: { x: 0, y: 0 },
+      phase: 0.25,
+      captureProfile: 'armored',
+    });
+
+    expect(enemy.snapshot).toMatchObject({
+      radius: 23,
+      contactDamage: 16,
+      captureProfile: 'armored',
+      armored: true,
+      staggerRemaining: 0,
+      alive: true,
+    });
+    expect(enemy.capture()).toEqual({
+      kind: 'peeled',
+      reward: { xp: 7, recovery: 2 },
+      staggerSeconds: 0.8,
+    });
+    expect(enemy.snapshot).toMatchObject({
+      armored: false,
+      alive: true,
+      behaviorState: 'staggered',
+      staggerRemaining: 0.8,
+    });
+
+    enemy.step(0.1, { x: 100, y: 0 }, wideBounds);
+    expect(enemy.snapshot.position).toEqual({ x: 0, y: 0 });
+    expect(enemy.snapshot.velocity).toEqual({ x: 0, y: 0 });
+    stepFor(enemy, 0.7, { x: 100, y: 0 });
+    expect(enemy.snapshot.staggerRemaining).toBeCloseTo(0);
+    enemy.step(0.1, { x: 100, y: 0 }, wideBounds);
+    expect(enemy.snapshot.position.x).toBeCloseTo(3.276);
+
+    expect(enemy.capture()).toEqual({
+      kind: 'killed',
+      reward: { xp: 14, recovery: 4 },
+    });
+    expect(enemy.snapshot).toMatchObject({
+      alive: false,
+      behaviorState: 'dead',
+    });
+    expect(enemy.capture()).toEqual({ kind: 'ignored', reason: 'dead' });
+  });
+
+  it('keeps ordinary enemies on their existing one-capture contract', () => {
+    const enemy = createEnemy('rusher');
+
+    expect(enemy.capture()).toEqual({
+      kind: 'killed',
+      reward: { xp: 16, recovery: 4 },
+    });
+    expect(enemy.snapshot.alive).toBe(false);
+  });
+
+  it('rejects armored profiles on non-Drifter archetypes', () => {
+    expect(
+      () =>
+        new EnemyModel({
+          id: 'armored-rusher',
+          archetype: 'rusher',
+          position: { x: 0, y: 0 },
+          phase: 0,
+          captureProfile: 'armored',
+        }),
+    ).toThrow(RangeError);
+  });
+
   it('treats invalid delta values as complete no-ops', () => {
     const enemy = createEnemy('rusher');
     const before = enemy.snapshot;

@@ -143,3 +143,11 @@ Open risks / decisions requested:
 - Asset record: the unmodified generated tile is saved at `public/assets/art/environment/wet-asphalt-tile-v1.png`; the final prompt and seam measurements are archived at `references/generated/quarantine-map-v1/README.md`.
 - Verification: final `npm run check` passes 32 test files/307 tests, lint, strict TypeScript, and production build. The running development server returns HTTP 200 for both the app and new tile.
 - Open risk: no controllable browser backend is available, so a full-map traversal at 16:9 and phone width remains an owner visual gate.
+
+### 2026-08-12 / P4 layered ordinary enemies
+
+- Agent and task: the primary agent owned the pure capture state, balance schedule, wave integration, rendering feedback, tests, and documentation. No delegation was used because the reward and presentation contract crosses the composition root.
+- Result: post-checkpoint Drifter waves deterministically introduce armored variants without changing M2 RNG or caps. One closure peels and staggers; a later closure kills. Each layer pays once, and exposed shells never regenerate.
+- Presentation: armored prey has a larger ivory plate silhouette; peel emits shell shards and deliberately skips the full corpse tear/decomposition. The surviving exposed body stays arterial and visibly staggered.
+- Verification: targeted coverage passes 4 files/24 tests. Final `npm run check` passes 35 files/317 tests, lint, strict TypeScript, and the production build.
+- Open risk: visual scale and encounter density require an owner play check because the controllable browser backend remains unavailable.
