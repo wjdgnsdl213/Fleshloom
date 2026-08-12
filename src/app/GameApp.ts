@@ -278,6 +278,7 @@ export class GameApp {
     host.appendChild(this.app.canvas);
     this.started = true;
     this.renderer.attach(this.app.stage);
+    void this.renderer.loadDeferredAssets().catch(() => undefined);
 
     this.player = {
       x: QUARANTINE_WORLD_START.x,

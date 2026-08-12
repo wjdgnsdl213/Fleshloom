@@ -100,3 +100,11 @@ Geometry functions remain deterministic and unit-tested. Rendering may interpola
 - Pool particles and enemy display objects.
 - Avoid per-frame allocations inside enemy and particle loops after the vertical slice.
 - Measure before optimizing; keep a debug overlay for FPS, enemies, samples, and particles.
+
+## Runtime asset loading
+
+- `presentation/AssetManifest.ts` is the single source of public production-art paths and loading phases.
+- Startup blocks only on the road tile, Carrier, Drifter, and living tether. The large street plate is requested only as a failed-road fallback.
+- Post-checkpoint actors and Warden load after the canvas is interactive. Renderers keep procedural fallbacks until each texture becomes available.
+- Asset URLs use `import.meta.env.BASE_URL`; game code must not introduce `/assets/...` root-absolute URLs.
+- `scripts/verify-release.mjs` verifies the built index references, public-to-dist copies, root-path safety, and the 6MiB startup-art budget.

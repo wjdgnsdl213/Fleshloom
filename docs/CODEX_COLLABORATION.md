@@ -159,3 +159,10 @@ Open risks / decisions requested:
 - Result: shell peel and final kill are now different audiovisual events; Carrier movement/loop/capture states deform the production sprite; integrity pips and XP meter bring the HUD closer to the approved styleframe; remaining core player-facing UI is Korean.
 - Verification: targeted presentation/tutorial tests pass 3 files/17 tests. Final `npm run check` passes 37 files/323 tests, lint, strict TypeScript, and production build.
 - Open risk: the managed shell cannot keep the Vite preview child process alive and the browser connector remains unavailable. Live viewport, motion, and Web Audio checks move to P6/manual QA.
+
+### 2026-08-12 / P6 release engineering gate
+
+- Agent and task: the primary agent audited the static production build, loading path, release commands, and test handoff. No delegation was used.
+- Result: runtime art paths are deployment-base aware, so root and GitHub repository sub-path hosting use the same build. Startup now waits for 5.29MiB of first-input art rather than every 16.17MiB public asset; later actors load after the canvas becomes interactive and procedural fallbacks remain available.
+- Automation: `npm run release:verify` passes 38 files/327 tests, ESLint, strict TypeScript, production build, public-to-dist copy checks, index/bundle path checks, and the 6MiB startup-art budget. The Korean README and browser/device/full-run QA matrix now describe the actual production build.
+- Open risk: the browser-control skill reported that no browser is available. Chrome, Edge, phone touch, live Web Audio, 10–12 minute victory/death routes, and public/private-session smoke tests remain an explicit owner/device gate rather than a claimed automated pass.

@@ -31,21 +31,7 @@ import type {
   LoopPreview,
 } from '../game/loop/LoopPath';
 import type { Camera2DSnapshot } from '../game/world/Camera2D';
-
-const ART_ASSET_URLS = {
-  background: '/assets/art/environment/quarantine-street-v1.png',
-  asphaltTile: '/assets/art/environment/wet-asphalt-tile-v1.png',
-  carrier: '/assets/art/characters/carrier-09.png',
-  drifter: '/assets/art/characters/drifter.png',
-  armoredDrifter: '/assets/art/enemies/armored-drifter.png',
-  rusher: '/assets/art/enemies/rusher.png',
-  watcher: '/assets/art/enemies/watcher.png',
-  cutter: '/assets/art/enemies/cutter.png',
-  mimic: '/assets/art/enemies/mimic.png',
-  eliteHusk: '/assets/art/enemies/elite-husk.png',
-  warden: '/assets/art/boss/warden.png',
-  tether: '/assets/art/loop/living-tether-tile.png',
-} as const;
+import { ART_ASSET_URLS } from './AssetManifest';
 
 const TETHER_ROPE_POINT_COUNT = 64;
 const TETHER_ROPE_SCALE = 0.059;
@@ -217,7 +203,8 @@ export class LoopPlaygroundRenderer {
   > = {};
   private wardenTexture: Texture | null = null;
   private tetherRope: MeshRope | null = null;
-  private assetLoadPromise: Promise<void> | null = null;
+  private startupAssetLoadPromise: Promise<void> | null = null;
+  private deferredAssetLoadPromise: Promise<void> | null = null;
   private environmentWidth = -1;
   private environmentHeight = -1;
   private lastPlayerX = Number.NaN;
@@ -241,8 +228,13 @@ export class LoopPlaygroundRenderer {
   }
 
   public async loadAssets(): Promise<void> {
-    this.assetLoadPromise ??= this.loadAssetsSafely();
-    await this.assetLoadPromise;
+    this.startupAssetLoadPromise ??= this.loadStartupAssetsSafely();
+    await this.startupAssetLoadPromise;
+  }
+
+  public async loadDeferredAssets(): Promise<void> {
+    this.deferredAssetLoadPromise ??= this.loadDeferredAssetsSafely();
+    await this.deferredAssetLoadPromise;
   }
 
   public attach(stage: Container): void {
@@ -322,35 +314,16 @@ export class LoopPlaygroundRenderer {
     this.weather.position.set(0, 0);
   }
 
-  private async loadAssetsSafely(): Promise<void> {
+  private async loadStartupAssetsSafely(): Promise<void> {
     const asphaltTile = await this.loadTextureSafely(
       ART_ASSET_URLS.asphaltTile,
     );
-    const [
-      background,
-      carrier,
-      drifter,
-      armoredDrifter,
-      rusher,
-      watcher,
-      cutter,
-      mimic,
-      eliteHusk,
-      warden,
-      tether,
-    ] = await Promise.all([
+    const [background, carrier, drifter, tether] = await Promise.all([
       asphaltTile === null
         ? this.loadTextureSafely(ART_ASSET_URLS.background)
         : Promise.resolve(null),
       this.loadTextureSafely(ART_ASSET_URLS.carrier),
       this.loadTextureSafely(ART_ASSET_URLS.drifter),
-      this.loadTextureSafely(ART_ASSET_URLS.armoredDrifter),
-      this.loadTextureSafely(ART_ASSET_URLS.rusher),
-      this.loadTextureSafely(ART_ASSET_URLS.watcher),
-      this.loadTextureSafely(ART_ASSET_URLS.cutter),
-      this.loadTextureSafely(ART_ASSET_URLS.mimic),
-      this.loadTextureSafely(ART_ASSET_URLS.eliteHusk),
-      this.loadTextureSafely(ART_ASSET_URLS.warden),
       this.loadTextureSafely(ART_ASSET_URLS.tether),
     ]);
 
@@ -358,26 +331,9 @@ export class LoopPlaygroundRenderer {
     this.asphaltTexture = asphaltTile;
     this.carrierTexture = carrier;
     this.drifterTexture = drifter;
-    this.armoredDrifterTexture = armoredDrifter;
-    this.wardenTexture = warden;
 
     if (drifter !== null) {
       this.enemyTextures.drifter = drifter;
-    }
-    if (rusher !== null) {
-      this.enemyTextures.rusher = rusher;
-    }
-    if (watcher !== null) {
-      this.enemyTextures.watcher = watcher;
-    }
-    if (cutter !== null) {
-      this.enemyTextures.cutter = cutter;
-    }
-    if (mimic !== null) {
-      this.enemyTextures.mimic = mimic;
-    }
-    if (eliteHusk !== null) {
-      this.enemyTextures['elite-husk'] = eliteHusk;
     }
 
     if (background !== null) {
@@ -394,10 +350,6 @@ export class LoopPlaygroundRenderer {
 
     if (carrier !== null) {
       this.playerSprite.texture = carrier;
-    }
-
-    if (warden !== null) {
-      this.wardenSprite.texture = warden;
     }
 
     if (tether !== null) {
@@ -417,6 +369,41 @@ export class LoopPlaygroundRenderer {
 
     this.environmentWidth = -1;
     this.environmentHeight = -1;
+  }
+
+  private async loadDeferredAssetsSafely(): Promise<void> {
+    const [armoredDrifter, rusher, watcher, cutter, mimic, eliteHusk, warden] =
+      await Promise.all([
+        this.loadTextureSafely(ART_ASSET_URLS.armoredDrifter),
+        this.loadTextureSafely(ART_ASSET_URLS.rusher),
+        this.loadTextureSafely(ART_ASSET_URLS.watcher),
+        this.loadTextureSafely(ART_ASSET_URLS.cutter),
+        this.loadTextureSafely(ART_ASSET_URLS.mimic),
+        this.loadTextureSafely(ART_ASSET_URLS.eliteHusk),
+        this.loadTextureSafely(ART_ASSET_URLS.warden),
+      ]);
+
+    this.armoredDrifterTexture = armoredDrifter;
+    this.wardenTexture = warden;
+
+    if (rusher !== null) {
+      this.enemyTextures.rusher = rusher;
+    }
+    if (watcher !== null) {
+      this.enemyTextures.watcher = watcher;
+    }
+    if (cutter !== null) {
+      this.enemyTextures.cutter = cutter;
+    }
+    if (mimic !== null) {
+      this.enemyTextures.mimic = mimic;
+    }
+    if (eliteHusk !== null) {
+      this.enemyTextures['elite-husk'] = eliteHusk;
+    }
+    if (warden !== null) {
+      this.wardenSprite.texture = warden;
+    }
   }
 
   private async loadTextureSafely(url: string): Promise<Texture | null> {

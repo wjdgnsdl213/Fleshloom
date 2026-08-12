@@ -1,57 +1,76 @@
-# QA Checklist
+# FLESHLOOM 릴리스 QA 체크리스트
 
-## First 30 seconds
+마지막 갱신: 2026-08-12
 
-- [ ] Movement works immediately with arrows and WASD.
-- [ ] The player can identify body, anchor, tether, and enemies without text.
-- [ ] Tutorial prompts appear only when relevant and disappear after success.
-- [ ] A rough loop is auto-assisted into a valid first capture.
-- [ ] A tap or failed loop does not feel like severe punishment.
+자동 검증 상태: 통과(38개 파일/327개 테스트, 린트, 타입, 빌드, 정적 자산 검사)
 
-## Input
+수동 검증 상태: 브라우저 런타임 부재로 미실행
 
-- [ ] Diagonal movement is not faster.
-- [ ] Releasing loop input while another key is pressed still closes once.
-- [ ] Losing window focus cancels or safely resolves held input; no stuck Space state.
-- [ ] Browser scrolling is prevented only for gameplay keys while the canvas is active.
-- [ ] Hold and toggle modes yield the same simulation intent.
-- [ ] Touch can move and loop simultaneously.
+## 1. 자동 릴리스 게이트
 
-## Loop geometry
+- [x] 현재 lockfile 설치 환경에서 `npm run release:verify`가 통과한다.
+- [x] ESLint, 전체 Vitest, strict TypeScript, Vite production build가 모두 통과한다.
+- [x] `dist/`에 `public/`의 모든 유효 자산이 복사되고 빈 파일이 없다.
+- [x] `dist/index.html`의 로컬 JS/CSS 참조가 존재하며 루트 절대 경로를 사용하지 않는다.
+- [x] 빌드 JS에 `/assets/art/...` 형태의 루트 절대 자산 URL이 없다.
+- [x] 시작 필수 아트가 6MiB 이하이다(측정값 5.29MiB).
 
-- [ ] Duplicate and near-duplicate samples are ignored.
-- [ ] Tiny, collinear, clockwise, and counter-clockwise paths are handled.
-- [ ] Self-intersections resolve deterministically.
-- [ ] Closing near the anchor and near an earlier trail segment both work.
-- [ ] Enemies on the boundary use one consistent rule.
-- [ ] Very large loops cannot exceed sample/performance limits.
-- [ ] Camera movement or resize does not change world-space capture results.
+## 2. 권장 수동 테스트 환경
 
-## Combat and progression
+| 환경 | 화면 | 입력 | 상태 |
+| --- | --- | --- | --- |
+| Chrome 최신 안정판 | 1920×1080 | 키보드 | 미실행 |
+| Edge 최신 안정판 | 1366×768 | 키보드 | 미실행 |
+| Android Chrome 또는 iOS Safari | 390×844 전후 | 실제 터치 | 미실행 |
 
-- [ ] One enemy is captured once per closure.
-- [ ] Cutter interruption cannot award the canceled capture.
-- [ ] Invulnerability prevents multi-hit damage bursts.
-- [ ] Multiple captures sum XP and recovery with the intended cap.
-- [ ] Active imprint never changes without explicit player selection.
-- [ ] Level-up choice remains permanent for that run and resets next run.
-- [ ] Boss stages cannot be skipped or become invulnerable forever.
+각 환경에서 개발 서버가 아닌 `dist/` 정적 프리뷰로 테스트한다. 콘솔을 열어 오류, 404, 처리되지 않은 Promise 거부를 함께 확인한다.
 
-## Presentation and accessibility
+## 3. 최초 3분과 카메라
 
-- [ ] Enemy telegraphs remain visible under rain, particles, and loop preview.
-- [ ] Closure, player damage, and loop cut use distinct feedback.
-- [ ] Reduced shake and reduced flash settings are respected everywhere.
-- [ ] Music/SFX/master volume settings persist for the session.
-- [ ] Critical information is not color-only.
-- [ ] Korean and English strings fit their UI containers when localization is added.
+- [ ] 타이틀에서 게임 시작까지 두 번 이하의 입력으로 진입한다.
+- [ ] 첫 입력 전에 Carrier, Drifter, 도로, 생체 고리가 표시되고 조작이 막히지 않는다.
+- [ ] 방향키와 WASD 이동이 즉시 반응하고 대각선 속도가 더 빠르지 않다.
+- [ ] 플레이어가 화면 중앙에 고정되는 느낌이 아니라, 먼저 움직인 뒤 카메라가 부드럽게 따라온다.
+- [ ] 3,200×1,800 구역의 네 방향으로 이동할 때 도로 표식·배수구·조명·생체 군락이 월드 좌표에 고정된다.
+- [ ] 월드 경계에서 플레이어와 카메라가 멈추며 화면 밖 빈 공간이 드러나지 않는다.
+- [ ] 카메라 이동이나 창 크기 변경이 고리 모양과 포획 판정을 바꾸지 않는다.
+- [ ] Toggle/Hold 입력이 같은 판정을 만들고, 포커스 상실 후 Space가 눌린 상태로 남지 않는다.
+- [ ] 튜토리얼 문구와 능력 선택 이름·설명·현재→다음 수치가 한국어로 읽히고 잘리지 않는다.
 
-## Release
+## 4. 중장갑 개체와 전체 진행
 
-- [ ] `npm run check` passes from a clean install.
-- [ ] The production build loads via a static server, not only Vite dev mode.
-- [ ] No missing assets, console errors, or unhandled promise rejections.
-- [ ] Chrome, Edge, and one mobile browser complete a run.
-- [ ] Public and backup URLs work in a signed-out/private session.
-- [ ] Restart from death and ending takes at most two actions.
+- [ ] 3분 이전 일반 Drifter는 유효한 고리 한 번에 죽는다.
+- [ ] 3분 이후 중장갑 Drifter가 정해진 비율로 등장하고 아이보리 외피로 즉시 구분된다.
+- [ ] 첫 포획은 외피만 벗기고 0.8초 경직, 조각, 한국어 안내, 별도 보상을 한 번만 낸다.
+- [ ] 노출된 개체는 살아서 이동하며 이후 고리 한 번에 최종 사망한다.
+- [ ] 외피 파괴와 최종 사망의 소리·화면 효과가 명확히 다르다.
+- [ ] Cutter, Mimic, Elite Husk와 계보 능력이 3~9분 구간에서 누락 없이 나타난다.
+- [ ] 9분에 일반 전투가 안전하게 정리되고 Warden 아레나로 전환된다.
+- [ ] 팔 2개, 외피 2개, 핵 삼중 투영의 목표가 한국어로 갱신되고 승리 결과로 이어진다.
+- [ ] 사망 재시작과 승리 후 타이틀 복귀가 두 번 이하의 입력으로 가능하다.
 
+## 5. 화면·성능·오디오·접근성
+
+- [ ] 16:9와 세로형 휴대폰에서 HUD, 선택 카드, 옵션, 결과 화면이 겹치거나 잘리지 않는다.
+- [ ] 후속 적/보스 자산이 백그라운드 로드되는 동안 프레임 멈춤이나 뒤늦은 이미지 팝인이 없다.
+- [ ] 일반 교전과 Elite/Warden 구간의 프레임 속도가 체감상 안정적이다.
+- [ ] 첫 사용자 입력 후 음악과 효과음이 정상 시작되고 마스터/음악/SFX 볼륨이 적용된다.
+- [ ] 포획, 외피 파괴, 피해, 고리 절단의 소리가 서로 구분되고 피크 왜곡이 없다.
+- [ ] 모션 감소는 카메라 흔들림과 비필수 애니메이션을 줄인다.
+- [ ] 섬광 감소는 피해/포획/Warden 섬광 강도를 낮추며 정보는 여전히 읽힌다.
+- [ ] 중요한 정보가 색상만으로 전달되지 않는다.
+- [ ] 터치 이동 스틱과 LOOP 버튼을 동시에 사용할 수 있고 브라우저 스크롤이 게임을 방해하지 않는다.
+
+## 6. 배포 스모크 테스트
+
+- [ ] 공개 URL을 로그아웃/시크릿 창에서 열 수 있다.
+- [ ] 공개 URL을 직접 새로고침해도 404가 없다.
+- [ ] Carrier, Drifter, 중장갑 Drifter, Warden 및 환경/고리 자산 요청이 모두 200이다.
+- [ ] 백업 URL에서도 같은 빌드가 열린다.
+- [ ] 최종 커밋 해시, 공개 URL, 백업 URL, 10~12분 승리 영상 또는 테스트 기록을 릴리스 기록에 남긴다.
+
+## 수동 결과 기록
+
+| 날짜 | 커밋 | 환경 | 결과 | 발견 사항/증빙 |
+| --- | --- | --- | --- | --- |
+| 미실행 | - | - | 대기 | 이 관리 환경에는 제어 가능한 브라우저가 없음 |

@@ -7,7 +7,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['src/**/*.ts', 'tests/**/*.ts', '*.ts'],
+    files: ['src/**/*.ts', 'tests/**/*.ts', '*.ts', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -16,4 +16,3 @@ export default tseslint.config(
     },
   },
 );
-

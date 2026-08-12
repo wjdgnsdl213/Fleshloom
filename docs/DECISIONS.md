@@ -148,3 +148,10 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Status: accepted
 - Decision: ordinary onboarding enemies remain one-capture prey. After 3:00, a deterministic share of Drifter spawns gains a persistent shell: the first closure peels and staggers it, while a later closure kills it. The shell does not reform, and each layer owns a separate one-time reward.
 - Reason: persistent exposure makes the second-loop requirement unambiguous, avoids hidden HP, preserves the early kill-moment lesson, and adds visible mid-run target priority without consuming wave RNG.
+
+## D-022 — Release startup waits only for first-input art
+
+- Date: 2026-08-12
+- Status: accepted
+- Decision: startup waits for the asphalt tile, Carrier, Drifter, and living tether only. Later enemies and Warden begin loading in the background after the canvas is attached. The full street plate is a startup fallback only when the asphalt tile fails. Every public art URL is resolved from Vite's deployment base rather than the site root.
+- Reason: the former 16.2MiB all-at-once image gate delayed the title even though most assets cannot appear during onboarding. A 6MiB startup budget makes first input faster and keeps the same production artwork, while base-aware URLs allow the same `dist/` to run at a domain root or repository sub-path.

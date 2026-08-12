@@ -37,7 +37,7 @@ Internal release target: 2026-08-25
 | P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Complete |
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
-| P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | In progress |
+| P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Manual gate pending |
 
 ## Workstream contracts
 
@@ -151,3 +151,12 @@ Internal release target: 2026-08-25
 - Verification: targeted presentation/tutorial coverage passes 3 files/17 tests. Final `npm run check` passes 37 files/323 tests, ESLint, strict TypeScript, and the production build.
 - Manual visual risk: the local preview child process exits in this managed environment and the controllable browser backend remains unavailable. Asset alpha was inspected directly, but 16:9/phone composition, live motion, and Web Audio still require owner/browser QA in P6.
 - Next: P6 release audit, public deploy preparation, and a concise manual test checklist.
+
+### 2026-08-12 — P6 automated release gate complete
+
+- Centralized production art paths and removed root-absolute `/assets/...` URLs so the build works both at a domain root and under a repository sub-path.
+- Split texture loading into a first-input gate and background phase. Startup waits for the asphalt, Carrier, Drifter, and tether (5.29MiB); armored/later enemies and Warden load after the canvas becomes interactive. The full street image is requested only if asphalt fails.
+- Added `npm run release:verify` to run the full repository gate, verify every public file reaches `dist/`, reject missing/root-absolute bundle references, and enforce a 6MiB startup-art budget.
+- Replaced the stale prototype README and generic checklist with the current Korean production summary and an exact Chrome/Edge/mobile, full-run, audio, accessibility, and deployment QA matrix.
+- Verification: final `npm run release:verify` passes 38 files/327 tests, ESLint, strict TypeScript, production build, 12 public-file copies, 12 index references, and the startup payload budget.
+- The browser-control skill was invoked for live QA but reported `No browser is available`. P6 remains at `Manual gate pending` until the three-device matrix, complete victory/death routes, and public signed-out smoke test are recorded.
