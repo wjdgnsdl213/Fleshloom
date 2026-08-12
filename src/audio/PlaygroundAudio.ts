@@ -194,7 +194,10 @@ export class PlaygroundAudio {
     });
   }
 
-  public playClosure(captured: boolean): void {
+  public playClosure(
+    captured: boolean,
+    captureCue: 'ordinary' | 'shell-peeled' = 'ordinary',
+  ): void {
     this.withRunningContext((context) => {
       if (!captured) {
         this.playTone(context, {
@@ -250,6 +253,38 @@ export class PlaygroundAudio {
         volume: 0.052,
         type: 'triangle',
       });
+
+      if (captureCue === 'shell-peeled') {
+        // Dry bone split plus a short reward pull. The missing tissue-rip tail
+        // tells the player that prey survived and needs another closure.
+        this.playNoise(context, {
+          duration: 0.14,
+          delay: 0.06,
+          volume: 0.061,
+          frequency: 2_900,
+          endFrequency: 430,
+          seed: 2_683,
+          filterType: 'bandpass',
+          q: 2.5,
+        });
+        this.playTone(context, {
+          frequency: 246,
+          endFrequency: 98,
+          duration: 0.18,
+          delay: 0.085,
+          volume: 0.037,
+          type: 'square',
+        });
+        this.playTone(context, {
+          frequency: 390,
+          endFrequency: 710,
+          duration: 0.13,
+          delay: 0.27,
+          volume: 0.016,
+          type: 'sine',
+        });
+        return;
+      }
 
       // Tissue separation, followed by an upward filtered pull into the hunter.
       this.playNoise(context, {

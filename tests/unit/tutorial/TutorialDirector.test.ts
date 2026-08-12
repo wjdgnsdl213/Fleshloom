@@ -18,7 +18,7 @@ describe('TutorialDirector', () => {
       elapsedSeconds: 0,
       stepElapsedSeconds: 0,
       completed: false,
-      prompt: 'MOVE · travel 56 px',
+      prompt: '이동 · 56px 전진',
       assistRequested: false,
     });
     expect(Object.isFrozen(snapshot)).toBe(true);
@@ -53,7 +53,7 @@ describe('TutorialDirector', () => {
     expect(tutorial.snapshot).toMatchObject({
       step: 'complete',
       completed: true,
-      prompt: 'HUNT · survive and evolve',
+      prompt: '사냥 · 생존하고 진화하기',
       assistRequested: false,
     });
   });
@@ -198,7 +198,7 @@ describe('TutorialDirector', () => {
       elapsedSeconds: 0,
       stepElapsedSeconds: 0,
       completed: false,
-      prompt: 'MOVE · travel 56 px',
+      prompt: '이동 · 56px 전진',
       assistRequested: false,
     });
   });

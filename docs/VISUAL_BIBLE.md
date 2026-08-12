@@ -87,3 +87,17 @@ authored puddles, worn crossing paint, vents, perimeter barricades, infection
 colonies, and emergency-light bloom. Only rain remains screen-fixed. This keeps
 the styleframe's wet material density without baking gameplay landmarks or
 screen-space lighting into one stretched arena image.
+
+### P5 production presentation lock
+
+The runtime armored Drifter uses
+`public/assets/art/enemies/armored-drifter.png` only while its shell is intact.
+Its six large ivory plates alter the gameplay silhouette instead of relying on
+color. Peel immediately swaps to the exposed base Drifter and uses bone shards,
+stagger deformation, an ivory HUD signal, and a distinct dry shell-break sound.
+The final capture alone uses the full body tear, decomposition, and intake beat.
+
+Carrier-09 remains one pooled bitmap but now has state-led deformation for
+movement stride, active-tether tension, and closure impact. The screen-space HUD
+borrows the approved styleframe's ivory integrity pips and narrow arterial
+progress meter while retaining the existing restrained diagnostic frame.

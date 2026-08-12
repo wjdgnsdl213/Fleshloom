@@ -151,3 +151,11 @@ Open risks / decisions requested:
 - Presentation: armored prey has a larger ivory plate silhouette; peel emits shell shards and deliberately skips the full corpse tear/decomposition. The surviving exposed body stays arterial and visibly staggered.
 - Verification: targeted coverage passes 4 files/24 tests. Final `npm run check` passes 35 files/317 tests, lint, strict TypeScript, and the production build.
 - Open risk: visual scale and encounter density require an owner play check because the controllable browser backend remains unavailable.
+
+### 2026-08-12 / P5 production presentation
+
+- Agent and task: the primary agent used the built-in image generation workflow for one bounded production asset, then owned alpha processing, runtime integration, animation, audio, HUD, Korean copy, tests, and documentation. No delegation was used.
+- Asset: `armored-drifter.png` preserves the base prey anatomy and adds a six-plate ivory shell. The chroma source and generation/validation record live under `references/generated/production-art-v3/`.
+- Result: shell peel and final kill are now different audiovisual events; Carrier movement/loop/capture states deform the production sprite; integrity pips and XP meter bring the HUD closer to the approved styleframe; remaining core player-facing UI is Korean.
+- Verification: targeted presentation/tutorial tests pass 3 files/17 tests. Final `npm run check` passes 37 files/323 tests, lint, strict TypeScript, and production build.
+- Open risk: the managed shell cannot keep the Vite preview child process alive and the browser connector remains unavailable. Live viewport, motion, and Web Audio checks move to P6/manual QA.

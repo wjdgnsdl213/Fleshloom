@@ -82,6 +82,7 @@ import {
   type PlaygroundEnemyView,
   type WardenAttackEchoView,
 } from '../presentation/LoopPlaygroundRenderer';
+import { classifyCaptureFeedback } from '../presentation/CaptureFeedback';
 
 export interface GameStatus {
   readonly state:
@@ -90,6 +91,7 @@ export interface GameStatus {
     | 'drawing'
     | 'valid'
     | 'success'
+    | 'armor-peeled'
     | 'miss'
     | 'hurt'
     | 'dead'
@@ -272,7 +274,7 @@ export class GameApp {
 
     this.app.canvas.className = 'game-canvas';
     this.app.canvas.tabIndex = 0;
-    this.app.canvas.setAttribute('aria-label', 'FLESHLOOM loop playground');
+    this.app.canvas.setAttribute('aria-label', 'FLESHLOOM 격리구역 사냥 화면');
     host.appendChild(this.app.canvas);
     this.started = true;
     this.renderer.attach(this.app.stage);
@@ -1424,8 +1426,18 @@ export class GameApp {
           bladeBandWidth,
           age: 0,
         };
-        this.audio.playClosure(capturedNow > 0);
-        this.feedbackState = capturedNow > 0 ? 'success' : 'miss';
+        const captureFeedback = classifyCaptureFeedback(
+          capturedNow,
+          capturedEnemies,
+        );
+        this.audio.playClosure(
+          capturedNow > 0,
+          captureFeedback.audioCue,
+        );
+        this.feedbackState =
+          captureFeedback.kind === 'captured'
+            ? 'success'
+            : captureFeedback.kind;
         this.feedbackTime = 1.8;
       } else {
         this.audio.playClosure(false);
@@ -1726,6 +1738,7 @@ export class GameApp {
       camera: this.camera.snapshot,
       elapsed: this.presentationElapsed,
       player: this.player,
+      playerVelocity: this.playerVelocity,
       warden: this.warden?.snapshot ?? null,
       enemies: [
         ...this.enemies.map((enemy): PlaygroundEnemyView => {
@@ -1956,49 +1969,50 @@ export class GameApp {
     const hintByState: Partial<
       Record<Exclude<GameStatus['state'], 'valid'>, string>
     > = {
-      title: 'Press Enter or begin the hunt. Toggle is the default loop input.',
+      title: 'Enter 또는 사냥 시작을 누르세요. 기본 고리 입력은 토글입니다.',
       idle:
         this.loopInput.inputMode === 'hold'
           ? '방향키로 움직이고 SPACE를 누른 채 적을 감싸세요.'
           : 'SPACE로 추적을 시작하고 이동한 뒤 다시 SPACE를 누르세요.',
       drawing: '계속 이동해 닻 주위에 충분한 면적을 만드세요.',
-      success: '포획 성공 — R로 사냥감을 되돌릴 수 있습니다.',
+      success: '포획 성공 — 생체량과 경험치를 흡수했습니다.',
+      'armor-peeled': '외피 파괴 — 노출된 몸체를 다음 고리로 포획하세요.',
       miss: '유효한 포획이 아니었습니다. 더 넓게 감싸 다시 시도하세요.',
     };
     if (state === 'hurt') {
-      return 'Carrier tissue damaged. Capture biomass to restore HP.';
+      return '캐리어 조직이 손상되었습니다. 적을 포획해 체력을 회복하세요.';
     }
     if (state === 'dead') {
-      return 'Carrier lost. Press R to restart the hunt.';
+      return '캐리어가 소실되었습니다. R을 눌러 사냥을 다시 시작하세요.';
     }
     if (state === 'mutation') {
-      return 'Choose one permanent mutation with 1, 2, or 3.';
+      return '1, 2, 3 중 하나의 영구 변이를 선택하세요.';
     }
     if (state === 'imprint') {
-      return 'Choose a temporary imprint, or keep the current one.';
+      return '임시 임프린트를 고르거나 현재 임프린트를 유지하세요.';
     }
     if (state === 'complete') {
-      return 'Nine-minute hunt secured. Warden contact is ready.';
+      return '9분 사냥이 완료되었습니다. 워든 접촉을 준비합니다.';
     }
     if (state === 'warden-arrival') {
-      return 'The Warden is surfacing. Keep moving and read its anatomy.';
+      return '워든이 출현합니다. 계속 이동하며 신체 구조를 파악하세요.';
     }
     if (state === 'warden-arms') {
-      return 'Close one loop around each exposed arm joint.';
+      return '노출된 양팔 관절을 각각 고리로 포획하세요.';
     }
     if (state === 'warden-shell') {
-      return 'Enclose the Warden core twice to peel both shell plates.';
+      return '워든의 핵을 두 번 감싸 양쪽 외피를 벗기세요.';
     }
     if (state === 'warden-core') {
-      return 'One loop must contain the core and both control nodes.';
+      return '하나의 고리에 핵과 양쪽 제어점을 모두 넣으세요.';
     }
     if (state === 'ending') {
-      return 'Closure complete. The Warden is collapsing.';
+      return '포획이 완료되었습니다. 워든이 붕괴하고 있습니다.';
     }
     if (state === 'victory') {
-      return 'Warden neutralized. Press R to begin a new seeded hunt.';
+      return '워든을 무력화했습니다. R을 눌러 새 사냥을 시작하세요.';
     }
-    return hintByState[state] ?? 'Keep moving. Close a loop around the prey.';
+    return hintByState[state] ?? '계속 이동하며 사냥감을 고리로 감싸세요.';
   }
 
   private reset(): void {

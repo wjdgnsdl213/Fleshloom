@@ -36,8 +36,8 @@ Internal release target: 2026-08-25
 | P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | Complete |
 | P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Complete |
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
-| P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | In progress |
-| P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Pending |
+| P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
+| P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | In progress |
 
 ## Workstream contracts
 
@@ -140,3 +140,14 @@ Internal release target: 2026-08-25
 - Verification: targeted state/content/model/integration coverage passes 4 files/24 tests. Final `npm run check` passes 35 files/317 tests, ESLint, strict TypeScript, and the production build.
 - Manual visual risk: the configured controllable browser backend remains unavailable, so armor readability at gameplay scale still needs an owner play check.
 - Next: P5 production presentation polish across actors, closure VFX, HUD, and audio.
+
+### 2026-08-12 — P5 complete
+
+- Generated a dedicated armored Drifter production sprite from the approved Drifter/styleframe material language, removed the flat chroma background, validated its alpha edge, and archived the source plus final prompt record under `references/generated/production-art-v3/`.
+- The intact shell now uses the dedicated six-plate ivory silhouette. The first capture swaps to the exposed Drifter body, applies a 0.8-second stagger deformation, emits shell shards, and deliberately omits the full corpse decomposition.
+- Capture presentation now classifies miss, ordinary kill, and shell peel as separate authored beats. Shell peel has an ivory HUD signal, explicit Korean instruction, and a dry bone-break cue with a short reward pull; final kill retains the full tissue separation/intake sound.
+- Carrier-09 now shows movement stride, active-loop tension, and capture kick in the production bitmap. The HUD adds eight ivory integrity pips and a red/amber XP meter based on pure tested display rules.
+- Title, options, tutorial, hunt HUD, Warden objectives, and result summaries now use Korean player-facing copy while preserving the FLESHLOOM/CARRIER-09 fiction labels.
+- Verification: targeted presentation/tutorial coverage passes 3 files/17 tests. Final `npm run check` passes 37 files/323 tests, ESLint, strict TypeScript, and the production build.
+- Manual visual risk: the local preview child process exits in this managed environment and the controllable browser backend remains unavailable. Asset alpha was inspected directly, but 16:9/phone composition, live motion, and Web Audio still require owner/browser QA in P6.
+- Next: P6 release audit, public deploy preparation, and a concise manual test checklist.

@@ -37,6 +37,7 @@ const ART_ASSET_URLS = {
   asphaltTile: '/assets/art/environment/wet-asphalt-tile-v1.png',
   carrier: '/assets/art/characters/carrier-09.png',
   drifter: '/assets/art/characters/drifter.png',
+  armoredDrifter: '/assets/art/enemies/armored-drifter.png',
   rusher: '/assets/art/enemies/rusher.png',
   watcher: '/assets/art/enemies/watcher.png',
   cutter: '/assets/art/enemies/cutter.png',
@@ -155,6 +156,7 @@ export interface PlaygroundRenderState {
   readonly camera: Camera2DSnapshot;
   readonly elapsed: number;
   readonly player: Vec2;
+  readonly playerVelocity: Vec2;
   readonly warden: WardenSnapshot | null;
   readonly enemies: readonly PlaygroundEnemyView[];
   readonly projectiles: readonly PlaygroundProjectileView[];
@@ -209,6 +211,7 @@ export class LoopPlaygroundRenderer {
   private asphaltTexture: Texture | null = null;
   private carrierTexture: Texture | null = null;
   private drifterTexture: Texture | null = null;
+  private armoredDrifterTexture: Texture | null = null;
   private readonly enemyTextures: Partial<
     Record<FullRunEnemyArchetype, Texture>
   > = {};
@@ -327,6 +330,7 @@ export class LoopPlaygroundRenderer {
       background,
       carrier,
       drifter,
+      armoredDrifter,
       rusher,
       watcher,
       cutter,
@@ -340,6 +344,7 @@ export class LoopPlaygroundRenderer {
         : Promise.resolve(null),
       this.loadTextureSafely(ART_ASSET_URLS.carrier),
       this.loadTextureSafely(ART_ASSET_URLS.drifter),
+      this.loadTextureSafely(ART_ASSET_URLS.armoredDrifter),
       this.loadTextureSafely(ART_ASSET_URLS.rusher),
       this.loadTextureSafely(ART_ASSET_URLS.watcher),
       this.loadTextureSafely(ART_ASSET_URLS.cutter),
@@ -353,6 +358,7 @@ export class LoopPlaygroundRenderer {
     this.asphaltTexture = asphaltTile;
     this.carrierTexture = carrier;
     this.drifterTexture = drifter;
+    this.armoredDrifterTexture = armoredDrifter;
     this.wardenTexture = warden;
 
     if (drifter !== null) {
@@ -512,7 +518,7 @@ export class LoopPlaygroundRenderer {
       }
 
       this.drawEnemyTelegraph(graphics, enemy, state.elapsed);
-      const texture = this.enemyTextureFor(enemy.archetype);
+      const texture = this.enemyTextureFor(enemy);
       if (texture !== null) {
         this.drawDrifterSpriteUnderlay(graphics, enemy);
         const sprite = this.ensureEnemySprite(visibleEnemySpriteCount);
@@ -993,7 +999,14 @@ export class LoopPlaygroundRenderer {
     player: Vec2,
     elapsed: number,
   ): void {
-    const twitch = Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.025;
+    const staggerStrength = Math.min(
+      1,
+      Math.max(0, (enemy.staggerRemaining ?? 0) / 0.8),
+    );
+    const staggerTwitch =
+      Math.sin(elapsed * 47 + enemy.phase * 5.1) * 0.075 * staggerStrength;
+    const twitch =
+      Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.025 + staggerTwitch;
     const angle =
       enemy.archetype === 'drifter'
         ? Math.atan2(
@@ -1003,7 +1016,8 @@ export class LoopPlaygroundRenderer {
         : Math.atan2(enemy.facing.y, enemy.facing.x);
     const breath = Math.sin(elapsed * 2.2 + enemy.phase) * 0.022;
     const hasDedicatedTexture =
-      this.enemyTextures[enemy.archetype] === texture;
+      this.enemyTextures[enemy.archetype] === texture ||
+      this.armoredDrifterTexture === texture;
     const tuning = hasDedicatedTexture
       ? ENEMY_SPRITE_TUNING[enemy.archetype]
       : DRIFTER_FALLBACK_TUNING[enemy.archetype];
@@ -1012,11 +1026,14 @@ export class LoopPlaygroundRenderer {
 
     sprite.texture = texture;
     sprite.anchor.set(0.5, tuning.anchorY);
-    sprite.position.set(enemy.position.x, enemy.position.y);
+    sprite.position.set(
+      enemy.position.x - enemy.facing.y * staggerTwitch * 16,
+      enemy.position.y + enemy.facing.x * staggerTwitch * 16,
+    );
     sprite.rotation = angle + Math.PI * 0.5 + twitch;
     sprite.scale.set(
-      baseScale * tuning.scaleX * (1 - breath * 0.45),
-      baseScale * tuning.scaleY * (1 + breath),
+      baseScale * tuning.scaleX * (1 - breath * 0.45 + staggerStrength * 0.04),
+      baseScale * tuning.scaleY * (1 + breath - staggerStrength * 0.06),
     );
     sprite.alpha = 0.98;
     sprite.tint =
@@ -1028,10 +1045,16 @@ export class LoopPlaygroundRenderer {
     sprite.visible = true;
   }
 
-  private enemyTextureFor(
-    archetype: FullRunEnemyArchetype,
-  ): Texture | null {
-    return this.enemyTextures[archetype] ?? this.drifterTexture;
+  private enemyTextureFor(enemy: PlaygroundEnemyView): Texture | null {
+    if (
+      enemy.archetype === 'drifter' &&
+      enemy.captureProfile === 'armored' &&
+      enemy.armored === true &&
+      this.armoredDrifterTexture !== null
+    ) {
+      return this.armoredDrifterTexture;
+    }
+    return this.enemyTextures[enemy.archetype] ?? this.drifterTexture;
   }
 
   private productionEnemyTint(
@@ -1092,31 +1115,29 @@ export class LoopPlaygroundRenderer {
 
       if (armored) {
         graphics
-          .circle(
-            enemy.position.x,
-            enemy.position.y,
-            enemy.radius * 1.08 * pulse,
-          )
+          .circle(enemy.position.x, enemy.position.y, enemy.radius * 1.04 * pulse)
           .stroke({
             color: GAMEPLAY_COLORS.bone,
-            width: 4.5,
-            alpha: 0.68,
+            width: this.armoredDrifterTexture === null ? 4.5 : 1.6,
+            alpha: this.armoredDrifterTexture === null ? 0.68 : 0.34,
           });
-        for (let index = 0; index < 6; index += 1) {
-          const angle = enemy.phase + (index / 6) * Math.PI * 2;
-          const base = {
-            x: enemy.position.x + Math.cos(angle) * enemy.radius * 0.82,
-            y: enemy.position.y + Math.sin(angle) * enemy.radius * 0.82,
-          };
-          this.drawShard(
-            graphics,
-            base,
-            angle + Math.PI * 0.5,
-            enemy.radius * 0.72,
-            enemy.radius * 0.24,
-            GAMEPLAY_COLORS.bone,
-            0.88,
-          );
+        if (this.armoredDrifterTexture === null) {
+          for (let index = 0; index < 6; index += 1) {
+            const angle = enemy.phase + (index / 6) * Math.PI * 2;
+            const base = {
+              x: enemy.position.x + Math.cos(angle) * enemy.radius * 0.82,
+              y: enemy.position.y + Math.sin(angle) * enemy.radius * 0.82,
+            };
+            this.drawShard(
+              graphics,
+              base,
+              angle + Math.PI * 0.5,
+              enemy.radius * 0.72,
+              enemy.radius * 0.24,
+              GAMEPLAY_COLORS.bone,
+              0.88,
+            );
+          }
         }
       } else {
         graphics
@@ -1372,15 +1393,34 @@ export class LoopPlaygroundRenderer {
       return;
     }
 
-    const breath = Math.sin(state.elapsed * 3.1) * 0.018;
+    const speed = Math.hypot(state.playerVelocity.x, state.playerVelocity.y);
+    const movement = Math.min(1, speed / 210);
+    const stride = Math.sin(state.elapsed * (3.1 + movement * 8.6));
+    const breath = stride * (0.018 + movement * 0.026);
+    const loopTension = Math.min(1, state.loopSamples.length / 18);
+    const captureKick =
+      state.closureEcho === null || state.closureEcho.captured <= 0
+        ? 0
+        : (1 -
+            smoothstep(
+              0.03,
+              0.22,
+              state.closureEcho.age /
+                PLAYGROUND_TUNING.closureDurationSeconds,
+            )) *
+          0.12;
     const baseScale =
       (PLAYGROUND_TUNING.playerRadius * 5.7) / this.carrierTexture.height;
     this.playerSprite.texture = this.carrierTexture;
-    this.playerSprite.position.set(state.player.x, state.player.y);
-    this.playerSprite.rotation = facingAngle + Math.PI * 0.5;
+    this.playerSprite.position.set(
+      state.player.x - Math.sin(facingAngle) * stride * movement * 1.8,
+      state.player.y + Math.cos(facingAngle) * stride * movement * 1.8,
+    );
+    this.playerSprite.rotation =
+      facingAngle + Math.PI * 0.5 + stride * movement * 0.025;
     this.playerSprite.scale.set(
-      baseScale * (1 - breath * 0.38),
-      baseScale * (1 + breath),
+      baseScale * (1 - breath * 0.38 + captureKick),
+      baseScale * (1 + breath - captureKick * 0.5 + loopTension * 0.025),
     );
     this.playerSprite.alpha = 1;
     this.playerSprite.tint =

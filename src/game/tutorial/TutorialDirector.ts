@@ -19,11 +19,11 @@ export interface TutorialSnapshot {
 
 export const TUTORIAL_PROMPTS: Readonly<Record<TutorialStep, string>> =
   Object.freeze({
-    move: 'MOVE · travel 56 px',
-    anchor: 'ANCHOR · start a living loop',
-    close: 'CLOSE · complete a valid loop',
-    capture: 'CAPTURE · enclose at least one enemy',
-    complete: 'HUNT · survive and evolve',
+    move: '이동 · 56px 전진',
+    anchor: '생체 닻 · 살아 있는 고리 시작',
+    close: '고리 닫기 · 유효한 폐곡선 완성',
+    capture: '포획 · 적을 하나 이상 감싸기',
+    complete: '사냥 · 생존하고 진화하기',
   });
 
 const isFinitePositive = (value: number): boolean =>
