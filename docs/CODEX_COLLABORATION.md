@@ -134,3 +134,12 @@ Open risks / decisions requested:
 - Encounter handling: normal waves spawn in a camera-local rectangle but simulate against full-world bounds. Warden arrival creates a local arena that constrains both the player and camera.
 - Verification: the final `npm run check` passes 30 test files/300 tests, lint, strict TypeScript, and the production build.
 - Open risk: the configured browser runtime remains unavailable, so follow lag, resize framing, and touch-screen composition require owner play inspection.
+
+### 2026-08-12 / P3 scrollable quarantine district
+
+- Agent and task: the primary agent authored the map layout, renderer integration, spawn-region rules, tests, and documentation. The built-in image generation workflow supplied one new project-bound asphalt material using the approved styleframe and current street plate as reference-only inputs.
+- Result: the 3,200×1,800 world now reads as one rain-soaked quarantine district rather than a stretched arena. A repeating asphalt base supports cached world-space puddles, road paint, vents, biomass, emergency lights, and a continuous concrete perimeter.
+- Spawn contract: normal enemies enter from a tested camera-excluded band, rotate preferred sides deterministically, and fall through to the next valid side near world edges. Their later movement and all combat still use full-world coordinates.
+- Asset record: the unmodified generated tile is saved at `public/assets/art/environment/wet-asphalt-tile-v1.png`; the final prompt and seam measurements are archived at `references/generated/quarantine-map-v1/README.md`.
+- Verification: final `npm run check` passes 32 test files/307 tests, lint, strict TypeScript, and production build. The running development server returns HTTP 200 for both the app and new tile.
+- Open risk: no controllable browser backend is available, so a full-map traversal at 16:9 and phone width remains an owner visual gate.

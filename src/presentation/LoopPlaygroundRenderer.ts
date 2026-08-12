@@ -6,9 +6,17 @@ import {
   Point,
   Sprite,
   Texture,
+  TilingSprite,
 } from 'pixi.js';
 import type { EnemyImprintKind } from '../content/enemies';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
+import {
+  DISTRICT_BIOMASS,
+  DISTRICT_CROSSWALKS,
+  DISTRICT_LIGHTS,
+  DISTRICT_PUDDLES,
+  DISTRICT_VENTS,
+} from '../content/quarantineDistrict';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
 import type { WorldBounds } from '../config/world';
 import { polygonCentroid } from '../core/geometry/polygon';
@@ -25,6 +33,7 @@ import type { Camera2DSnapshot } from '../game/world/Camera2D';
 
 const ART_ASSET_URLS = {
   background: '/assets/art/environment/quarantine-street-v1.png',
+  asphaltTile: '/assets/art/environment/wet-asphalt-tile-v1.png',
   carrier: '/assets/art/characters/carrier-09.png',
   drifter: '/assets/art/characters/drifter.png',
   rusher: '/assets/art/enemies/rusher.png',
@@ -40,6 +49,10 @@ const TETHER_ROPE_POINT_COUNT = 64;
 const TETHER_ROPE_SCALE = 0.059;
 const CAPTURE_RASTER_HOLD_END = 0.22;
 const CAPTURE_RASTER_FADE_END = 0.36;
+const ASPHALT_TILE_SCALE = 0.58;
+const WORLD_BARRIER_INSET = 34;
+const WORLD_BARRIER_LENGTH = 92;
+const WORLD_BARRIER_DEPTH = 34;
 
 interface EnemySpriteTuning {
   readonly anchorY: number;
@@ -156,8 +169,15 @@ export interface PlaygroundRenderState {
 
 export class LoopPlaygroundRenderer {
   private readonly worldLayer = new Container();
+  private readonly asphaltTile = new TilingSprite({
+    texture: Texture.EMPTY,
+    width: 1,
+    height: 1,
+  });
   private readonly backgroundSprite = new Sprite(Texture.EMPTY);
   private readonly environment = new Graphics();
+  private readonly environmentAtmosphere = new Graphics();
+  private readonly environmentProps = new Graphics();
   private readonly wardenUnderlay = new Graphics();
   private readonly wardenSpriteLayer = new Container();
   private readonly wardenSprite = new Sprite(Texture.EMPTY);
@@ -181,6 +201,7 @@ export class LoopPlaygroundRenderer {
   private readonly effects = new Graphics();
   private readonly weather = new Graphics();
   private backgroundTexture: Texture | null = null;
+  private asphaltTexture: Texture | null = null;
   private carrierTexture: Texture | null = null;
   private drifterTexture: Texture | null = null;
   private readonly enemyTextures: Partial<
@@ -196,6 +217,7 @@ export class LoopPlaygroundRenderer {
   private playerFacing = -0.48;
 
   public constructor() {
+    this.asphaltTile.visible = false;
     this.backgroundSprite.anchor.set(0.5);
     this.backgroundSprite.visible = false;
     this.playerSprite.anchor.set(0.5, 0.42);
@@ -217,8 +239,11 @@ export class LoopPlaygroundRenderer {
 
   public attach(stage: Container): void {
     this.worldLayer.addChild(
+      this.asphaltTile,
       this.backgroundSprite,
       this.environment,
+      this.environmentAtmosphere,
+      this.environmentProps,
       this.wardenUnderlay,
       this.wardenSpriteLayer,
       this.actors,
@@ -241,6 +266,7 @@ export class LoopPlaygroundRenderer {
       state.reducedMotion,
     );
     this.drawEnvironment(visualState);
+    this.drawEnvironmentAtmosphere(visualState);
     this.drawActors(visualState);
     this.drawLoop(visualState);
     this.updateCapturedEchoSprites(
@@ -283,12 +309,15 @@ export class LoopPlaygroundRenderer {
       -camera.y + offsetY,
     );
 
-    // Rain and practical-light bloom stay in screen space so the world impact
-    // never turns the weather into a second, competing camera shake.
+    // Rain stays in screen space so world impact never turns it into a second,
+    // competing camera shake. Map lights travel with their world landmarks.
     this.weather.position.set(0, 0);
   }
 
   private async loadAssetsSafely(): Promise<void> {
+    const asphaltTile = await this.loadTextureSafely(
+      ART_ASSET_URLS.asphaltTile,
+    );
     const [
       background,
       carrier,
@@ -301,7 +330,9 @@ export class LoopPlaygroundRenderer {
       warden,
       tether,
     ] = await Promise.all([
-      this.loadTextureSafely(ART_ASSET_URLS.background),
+      asphaltTile === null
+        ? this.loadTextureSafely(ART_ASSET_URLS.background)
+        : Promise.resolve(null),
       this.loadTextureSafely(ART_ASSET_URLS.carrier),
       this.loadTextureSafely(ART_ASSET_URLS.drifter),
       this.loadTextureSafely(ART_ASSET_URLS.rusher),
@@ -314,6 +345,7 @@ export class LoopPlaygroundRenderer {
     ]);
 
     this.backgroundTexture = background;
+    this.asphaltTexture = asphaltTile;
     this.carrierTexture = carrier;
     this.drifterTexture = drifter;
     this.wardenTexture = warden;
@@ -339,7 +371,14 @@ export class LoopPlaygroundRenderer {
 
     if (background !== null) {
       this.backgroundSprite.texture = background;
-      this.backgroundSprite.visible = true;
+      this.backgroundSprite.visible = asphaltTile === null;
+    }
+
+    if (asphaltTile !== null) {
+      this.asphaltTile.texture = asphaltTile;
+      this.asphaltTile.tileScale.set(ASPHALT_TILE_SCALE);
+      this.asphaltTile.visible = true;
+      this.backgroundSprite.visible = false;
     }
 
     if (carrier !== null) {
@@ -391,60 +430,60 @@ export class LoopPlaygroundRenderer {
     this.environmentHeight = height;
 
     const graphics = this.environment.clear();
+    const props = this.environmentProps.clear();
+    const minX = state.worldBounds.minX;
+    const minY = state.worldBounds.minY;
 
-    if (this.backgroundTexture !== null) {
+    if (this.asphaltTexture !== null) {
+      this.asphaltTile.position.set(minX, minY);
+      this.asphaltTile.setSize(width, height);
+      this.asphaltTile.visible = true;
+      this.backgroundSprite.visible = false;
+      graphics.rect(minX, minY, width, height).fill({
+        color: GAMEPLAY_COLORS.asphalt,
+        alpha: 0.18,
+      });
+    } else if (this.backgroundTexture !== null) {
       const coverScale = Math.max(
         (width + 12) / this.backgroundTexture.width,
         (height + 12) / this.backgroundTexture.height,
       );
+      this.asphaltTile.visible = false;
+      this.backgroundSprite.visible = true;
       this.backgroundSprite.position.set(
-        state.worldBounds.minX + width * 0.5,
-        state.worldBounds.minY + height * 0.5,
+        minX + width * 0.5,
+        minY + height * 0.5,
       );
       this.backgroundSprite.scale.set(coverScale);
-
-      const edgeShade = Math.max(18, Math.min(width, height) * 0.04);
+      graphics.rect(minX, minY, width, height).fill({
+        color: GAMEPLAY_COLORS.void,
+        alpha: 0.16,
+      });
+    } else {
+      this.asphaltTile.visible = false;
+      this.backgroundSprite.visible = false;
+      graphics.rect(minX, minY, width, height).fill(GAMEPLAY_COLORS.void);
       graphics
-        .rect(0, 0, width, edgeShade)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.14 });
-      graphics
-        .rect(0, height - edgeShade, width, edgeShade)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.14 });
-      graphics
-        .rect(0, 0, edgeShade, height)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.1 });
-      graphics
-        .rect(width - edgeShade, 0, edgeShade, height)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.1 });
-      return;
+        .rect(minX, minY, width, height)
+        .fill({ color: GAMEPLAY_COLORS.asphalt, alpha: 0.98 });
     }
 
-    graphics.rect(0, 0, width, height).fill(GAMEPLAY_COLORS.void);
-
-    const edge = Math.max(20, Math.min(width, height) * 0.045);
-    graphics
-      .roundRect(
-        edge * 0.45,
-        edge * 0.45,
-        width - edge * 0.9,
-        height - edge * 0.9,
-        10,
-      )
-      .fill({ color: GAMEPLAY_COLORS.asphalt, alpha: 0.98 });
+    const edge = WORLD_BARRIER_INSET + WORLD_BARRIER_DEPTH;
 
     this.drawAsphaltPatches(graphics, width, height, edge);
-    this.drawPuddleBodies(graphics, width, height, edge);
+    this.drawPuddleBodies(graphics);
     this.drawRoadCracks(graphics, width, height, edge);
-    this.drawCrossingMarks(graphics, width, height, edge);
-    this.drawBarricades(graphics, width, height, edge);
-    this.drawEdgeBiomass(graphics, width, height, edge);
+    this.drawCrossingMarks(graphics);
+    this.drawEdgeBiomass(props);
+    this.drawDistrictVents(props);
+    this.drawBarricades(props, width, height);
 
     graphics
-      .rect(edge * 0.45, edge * 0.45, width - edge * 0.9, height - edge * 0.9)
+      .rect(minX, minY, width, height)
       .stroke({
-        color: GAMEPLAY_COLORS.rain,
-        width: 1,
-        alpha: 0.13,
+        color: GAMEPLAY_COLORS.void,
+        width: WORLD_BARRIER_DEPTH * 1.8,
+        alpha: 0.82,
       });
   }
 
@@ -1568,7 +1607,11 @@ export class LoopPlaygroundRenderer {
     height: number,
     edge: number,
   ): void {
-    for (let index = 0; index < 14; index += 1) {
+    const patchCount = Math.max(
+      28,
+      Math.min(72, Math.floor((width * height) / 82_000)),
+    );
+    for (let index = 0; index < patchCount; index += 1) {
       const x = edge + deterministicUnit(index, 101) * (width - edge * 2);
       const y = edge + deterministicUnit(index, 103) * (height - edge * 2);
       const radiusX = 28 + deterministicUnit(index, 107) * 92;
@@ -1600,34 +1643,40 @@ export class LoopPlaygroundRenderer {
       });
   }
 
-  private drawPuddleBodies(
-    graphics: Graphics,
-    width: number,
-    height: number,
-    edge: number,
-  ): void {
-    for (let index = 0; index < 7; index += 1) {
-      const puddle = this.puddleAt(index, width, height, edge);
+  private drawPuddleBodies(graphics: Graphics): void {
+    for (const puddle of DISTRICT_PUDDLES) {
+      this.traceOrientedEllipse(
+        graphics,
+        puddle.position,
+        puddle.radiusX,
+        puddle.radiusY,
+        puddle.rotation,
+      );
       graphics
-        .ellipse(puddle.x, puddle.y, puddle.radiusX, puddle.radiusY)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.34 })
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.36 })
         .stroke({
           color: GAMEPLAY_COLORS.rain,
           width: 1,
-          alpha: 0.1,
+          alpha: 0.13,
         });
-      graphics
-        .ellipse(
-          puddle.x - puddle.radiusX * 0.16,
-          puddle.y - puddle.radiusY * 0.12,
-          puddle.radiusX * 0.52,
-          puddle.radiusY * 0.42,
-        )
-        .stroke({
-          color: GAMEPLAY_COLORS.asphaltLight,
-          width: 1,
-          alpha: 0.24,
-        });
+      const inner = this.localPoint(
+        puddle.position,
+        puddle.rotation,
+        -puddle.radiusX * 0.14,
+        -puddle.radiusY * 0.1,
+      );
+      this.traceOrientedEllipse(
+        graphics,
+        inner,
+        puddle.radiusX * 0.54,
+        puddle.radiusY * 0.4,
+        puddle.rotation,
+      );
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.asphaltLight,
+        width: 1,
+        alpha: 0.26,
+      });
     }
   }
 
@@ -1637,7 +1686,11 @@ export class LoopPlaygroundRenderer {
     height: number,
     edge: number,
   ): void {
-    for (let crackIndex = 0; crackIndex < 15; crackIndex += 1) {
+    const crackCount = Math.max(
+      24,
+      Math.min(64, Math.floor((width * height) / 96_000)),
+    );
+    for (let crackIndex = 0; crackIndex < crackCount; crackIndex += 1) {
       let x = edge + deterministicUnit(crackIndex, 131) * (width - edge * 2);
       let y = edge + deterministicUnit(crackIndex, 137) * (height - edge * 2);
       let angle = deterministicUnit(crackIndex, 139) * Math.PI * 2;
@@ -1669,43 +1722,46 @@ export class LoopPlaygroundRenderer {
     }
   }
 
-  private drawCrossingMarks(
-    graphics: Graphics,
-    width: number,
-    height: number,
-    edge: number,
-  ): void {
-    const count = width < 700 ? 4 : 6;
-    const length = Math.min(138, width * 0.16);
-    const markWidth = Math.max(7, Math.min(11, height * 0.016));
-    const x = width - edge - length * 0.5;
-
-    for (let index = 0; index < count; index += 1) {
-      const y = edge + 21 + index * (markWidth + 12);
-      this.traceOrientedQuad(graphics, { x, y }, length, markWidth, -0.1);
-      graphics.fill({ color: GAMEPLAY_COLORS.bone, alpha: 0.1 });
-      this.traceOrientedQuad(
-        graphics,
-        { x: x - length * 0.08, y: y - 1 },
-        length * 0.44,
-        Math.max(1, markWidth * 0.16),
-        -0.1,
-      );
-      graphics.fill({ color: GAMEPLAY_COLORS.rain, alpha: 0.16 });
-    }
-
-    for (let index = 0; index < 4; index += 1) {
-      this.traceOrientedQuad(
-        graphics,
-        {
-          x: edge + 70 + index * 82,
-          y: height - edge - 45,
-        },
-        44,
-        4,
-        0.045,
-      );
-      graphics.fill({ color: GAMEPLAY_COLORS.tendon, alpha: 0.09 });
+  private drawCrossingMarks(graphics: Graphics): void {
+    for (const crosswalk of DISTRICT_CROSSWALKS) {
+      const totalWidth =
+        (crosswalk.stripeCount - 1) * crosswalk.stripeGap;
+      for (let index = 0; index < crosswalk.stripeCount; index += 1) {
+        const offset = index * crosswalk.stripeGap - totalWidth / 2;
+        const center = this.localPoint(
+          crosswalk.position,
+          crosswalk.rotation,
+          0,
+          offset,
+        );
+        this.traceOrientedQuad(
+          graphics,
+          center,
+          crosswalk.stripeLength,
+          crosswalk.stripeWidth,
+          crosswalk.rotation,
+        );
+        graphics.fill({
+          color: GAMEPLAY_COLORS.bone,
+          alpha: index % 3 === 0 ? 0.12 : 0.085,
+        });
+        const wear = this.localPoint(
+          center,
+          crosswalk.rotation,
+          crosswalk.stripeLength *
+            (deterministicUnit(index, crosswalk.stripeCount + 301) - 0.5) *
+            0.45,
+          0,
+        );
+        this.traceOrientedQuad(
+          graphics,
+          wear,
+          crosswalk.stripeLength * 0.22,
+          Math.max(1, crosswalk.stripeWidth * 0.18),
+          crosswalk.rotation,
+        );
+        graphics.fill({ color: GAMEPLAY_COLORS.rain, alpha: 0.15 });
+      }
     }
   }
 
@@ -1713,35 +1769,47 @@ export class LoopPlaygroundRenderer {
     graphics: Graphics,
     width: number,
     height: number,
-    edge: number,
   ): void {
-    const topCount = width < 760 ? 2 : 3;
-    for (let index = 0; index < topCount; index += 1) {
+    const horizontalCount = Math.ceil(width / WORLD_BARRIER_LENGTH);
+    for (let index = 0; index < horizontalCount; index += 1) {
+      const x =
+        ((index + 0.5) / horizontalCount) * width;
       this.drawConcreteBlock(
         graphics,
-        {
-          x: edge + 54 + index * 78,
-          y: edge + 4 + index * 2,
-        },
-        70,
-        20,
-        0.035,
+        { x, y: WORLD_BARRIER_INSET },
+        width / horizontalCount + 4,
+        WORLD_BARRIER_DEPTH,
+        index % 2 === 0 ? 0.012 : -0.012,
         index,
+      );
+      this.drawConcreteBlock(
+        graphics,
+        { x, y: height - WORLD_BARRIER_INSET },
+        width / horizontalCount + 4,
+        WORLD_BARRIER_DEPTH,
+        Math.PI + (index % 2 === 0 ? -0.012 : 0.012),
+        index + 101,
       );
     }
 
-    const bottomCount = width < 760 ? 2 : 3;
-    for (let index = 0; index < bottomCount; index += 1) {
+    const verticalCount = Math.ceil(height / WORLD_BARRIER_LENGTH);
+    for (let index = 1; index < verticalCount - 1; index += 1) {
+      const y = ((index + 0.5) / verticalCount) * height;
       this.drawConcreteBlock(
         graphics,
-        {
-          x: width - edge - 54 - index * 78,
-          y: height - edge - 2 - index * 2,
-        },
-        70,
-        20,
-        Math.PI + 0.035,
-        index + 7,
+        { x: WORLD_BARRIER_INSET, y },
+        height / verticalCount + 4,
+        WORLD_BARRIER_DEPTH,
+        Math.PI / 2 + (index % 2 === 0 ? 0.012 : -0.012),
+        index + 211,
+      );
+      this.drawConcreteBlock(
+        graphics,
+        { x: width - WORLD_BARRIER_INSET, y },
+        height / verticalCount + 4,
+        WORLD_BARRIER_DEPTH,
+        -Math.PI / 2 + (index % 2 === 0 ? -0.012 : 0.012),
+        index + 307,
       );
     }
   }
@@ -1786,30 +1854,23 @@ export class LoopPlaygroundRenderer {
     graphics.fill({ color: GAMEPLAY_COLORS.amber, alpha: 0.2 });
   }
 
-  private drawEdgeBiomass(
-    graphics: Graphics,
-    width: number,
-    height: number,
-    edge: number,
-  ): void {
-    const colonies = [
-      { origin: { x: edge * 0.3, y: height * 0.27 }, direction: 1 },
-      { origin: { x: width - edge * 0.25, y: height * 0.76 }, direction: -1 },
-    ] as const;
-
-    colonies.forEach((colony, colonyIndex) => {
-      for (let massIndex = 0; massIndex < 6; massIndex += 1) {
-        const spread = deterministicUnit(colonyIndex * 17 + massIndex, 191);
-        const x =
-          colony.origin.x +
-          colony.direction * spread * (edge + 24) +
-          (deterministicUnit(massIndex, 193) - 0.5) * 10;
-        const y =
-          colony.origin.y +
-          (deterministicUnit(colonyIndex * 13 + massIndex, 197) - 0.5) * 76;
+  private drawEdgeBiomass(graphics: Graphics): void {
+    DISTRICT_BIOMASS.forEach((colony, colonyIndex) => {
+      for (let massIndex = 0; massIndex < colony.massCount; massIndex += 1) {
+        const along =
+          12 + deterministicUnit(colonyIndex * 17 + massIndex, 191) * 74;
+        const lateral =
+          (deterministicUnit(colonyIndex * 13 + massIndex, 197) - 0.5) *
+          colony.spread;
+        const position = this.localPoint(
+          colony.origin,
+          colony.inwardAngle,
+          along,
+          lateral,
+        );
         const radius = 8 + deterministicUnit(massIndex, 199) * 14;
         graphics
-          .circle(x, y, radius)
+          .circle(position.x, position.y, radius)
           .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.94 })
           .stroke({
             color: GAMEPLAY_COLORS.tendon,
@@ -1819,20 +1880,27 @@ export class LoopPlaygroundRenderer {
       }
 
       for (let tendrilIndex = 0; tendrilIndex < 5; tendrilIndex += 1) {
-        const spread = (tendrilIndex - 2) * 18;
-        const reach = 42 + deterministicUnit(tendrilIndex, colonyIndex + 211) * 46;
-        const end = {
-          x: colony.origin.x + colony.direction * reach,
-          y: colony.origin.y + spread,
-        };
-        const controlOne = {
-          x: colony.origin.x + colony.direction * reach * 0.24,
-          y: colony.origin.y + spread * 0.08,
-        };
-        const controlTwo = {
-          x: colony.origin.x + colony.direction * reach * 0.72,
-          y: end.y - spread * 0.32,
-        };
+        const lateral = (tendrilIndex - 2) * (colony.spread / 9);
+        const reach =
+          58 + deterministicUnit(tendrilIndex, colonyIndex + 211) * 92;
+        const end = this.localPoint(
+          colony.origin,
+          colony.inwardAngle,
+          reach,
+          lateral,
+        );
+        const controlOne = this.localPoint(
+          colony.origin,
+          colony.inwardAngle,
+          reach * 0.28,
+          lateral * 0.08,
+        );
+        const controlTwo = this.localPoint(
+          colony.origin,
+          colony.inwardAngle,
+          reach * 0.74,
+          lateral * 0.72,
+        );
 
         this.drawBezierStroke(
           graphics,
@@ -1858,42 +1926,91 @@ export class LoopPlaygroundRenderer {
     });
   }
 
+  private drawDistrictVents(graphics: Graphics): void {
+    for (const vent of DISTRICT_VENTS) {
+      this.traceOrientedQuad(
+        graphics,
+        vent.position,
+        vent.width,
+        vent.height,
+        vent.rotation,
+      );
+      graphics
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.96 })
+        .stroke({ color: GAMEPLAY_COLORS.rain, width: 2, alpha: 0.38 });
+
+      for (let slat = -3; slat <= 3; slat += 1) {
+        const along = (slat / 3) * vent.width * 0.36;
+        const start = this.localPoint(
+          vent.position,
+          vent.rotation,
+          along,
+          -vent.height * 0.35,
+        );
+        const end = this.localPoint(
+          vent.position,
+          vent.rotation,
+          along,
+          vent.height * 0.35,
+        );
+        graphics.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({
+          color: GAMEPLAY_COLORS.asphaltLight,
+          width: 3,
+          alpha: 0.7,
+        });
+        graphics.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({
+          color: GAMEPLAY_COLORS.rain,
+          width: 0.8,
+          alpha: 0.28,
+        });
+      }
+    }
+  }
+
+  private drawEnvironmentAtmosphere(state: PlaygroundRenderState): void {
+    const graphics = this.environmentAtmosphere.clear();
+    for (const light of DISTRICT_LIGHTS) {
+      this.drawEmergencyLight(
+        graphics,
+        light.position,
+        state.elapsed,
+        light.phase,
+        state.reducedFlash,
+      );
+    }
+
+    DISTRICT_PUDDLES.forEach((puddle, index) => {
+      const shimmer =
+        0.5 + Math.sin(state.elapsed * 1.6 + index * 2.1) * 0.5;
+      const center = this.localPoint(
+        puddle.position,
+        puddle.rotation,
+        -puddle.radiusX * 0.16 + shimmer * 3,
+        -puddle.radiusY * 0.14,
+      );
+      const start = this.localPoint(
+        center,
+        puddle.rotation,
+        -puddle.radiusX * (0.08 + shimmer * 0.08),
+        0,
+      );
+      const end = this.localPoint(
+        center,
+        puddle.rotation,
+        puddle.radiusX * (0.08 + shimmer * 0.08),
+        0,
+      );
+      graphics.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({
+        color: GAMEPLAY_COLORS.rain,
+        width: 1.1,
+        alpha: 0.16 + shimmer * 0.12,
+      });
+    });
+  }
+
   private drawWeather(state: PlaygroundRenderState): void {
     const { width, height, elapsed } = state;
     const graphics = this.weather.clear();
-    const edge = Math.max(20, Math.min(width, height) * 0.045);
-
-    this.drawEmergencyLight(
-      graphics,
-      { x: edge * 0.62, y: height * 0.32 },
-      elapsed,
-      0,
-      state.reducedFlash,
-    );
-    this.drawEmergencyLight(
-      graphics,
-      { x: width - edge * 0.62, y: height * 0.79 },
-      elapsed,
-      1,
-      state.reducedFlash,
-    );
-
-    for (let index = 0; index < 7; index += 1) {
-      const puddle = this.puddleAt(index, width, height, edge);
-      const shimmer = 0.5 + Math.sin(elapsed * 1.6 + index * 2.1) * 0.5;
-      graphics
-        .ellipse(
-          puddle.x - puddle.radiusX * 0.18 + shimmer * 3,
-          puddle.y - puddle.radiusY * 0.18,
-          puddle.radiusX * (0.18 + shimmer * 0.18),
-          Math.max(0.8, puddle.radiusY * 0.08),
-        )
-        .stroke({
-          color: GAMEPLAY_COLORS.rain,
-          width: 1.1,
-          alpha: 0.16 + shimmer * 0.12,
-        });
-    }
 
     const rainCount = Math.max(
       28,
@@ -1947,20 +2064,6 @@ export class LoopPlaygroundRenderer {
         width: 1,
         alpha: 0.38,
       });
-  }
-
-  private puddleAt(
-    index: number,
-    width: number,
-    height: number,
-    edge: number,
-  ): { x: number; y: number; radiusX: number; radiusY: number } {
-    return {
-      x: edge + deterministicUnit(index, 223) * (width - edge * 2),
-      y: edge + deterministicUnit(index, 227) * (height - edge * 2),
-      radiusX: 24 + deterministicUnit(index, 229) * 52,
-      radiusY: 8 + deterministicUnit(index, 233) * 17,
-    };
   }
 
   private drawDrifter(
@@ -2640,6 +2743,26 @@ export class LoopPlaygroundRenderer {
       this.localPoint(center, angle, -length * 0.5, -width * 0.5),
       this.localPoint(center, angle, -length * 0.5, width * 0.5),
     ];
+    this.tracePath(graphics, points, true);
+  }
+
+  private traceOrientedEllipse(
+    graphics: Graphics,
+    center: Vec2,
+    radiusX: number,
+    radiusY: number,
+    angle: number,
+  ): void {
+    const segmentCount = 24;
+    const points = Array.from({ length: segmentCount }, (_, index) => {
+      const radians = (index / segmentCount) * Math.PI * 2;
+      return this.localPoint(
+        center,
+        angle,
+        Math.cos(radians) * radiusX,
+        Math.sin(radians) * radiusY,
+      );
+    });
     this.tracePath(graphics, points, true);
   }
 

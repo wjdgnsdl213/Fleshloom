@@ -134,3 +134,10 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Status: accepted
 - Decision: the quarantine district is a fixed 3,200×1,800 world. Player movement, loop geometry, enemies, projectiles, collision, and capture stay in world coordinates. A soft dead-zone camera only translates the Pixi world container; weather and DOM controls remain in viewport space. The Warden transition creates a bounded local arena around the encounter point.
 - Reason: movement can traverse a real place without coupling game rules to browser size, while resize behavior and boss framing remain deterministic.
+
+## D-020 — The district is an authored layered map, not one stretched arena
+
+- Date: 2026-08-12
+- Status: accepted
+- Decision: the 3,200×1,800 district repeats one quiet wet-asphalt material under deterministic world-space decals, puddles, vents, emergency lights, biomass colonies, and a continuous concrete perimeter. Normal enemies enter through one of four camera-excluded spawn bands and continue simulating against the full world.
+- Reason: separating reusable ground material from authored landmarks prevents an obviously stretched arena, gives traversal recognizable places, keeps effects screen-readable, and guarantees that new enemies do not visibly pop into existence.

@@ -36,7 +36,7 @@ src/
     progression/   XP, imprints, mutation draft, Apex
     run/           waves, difficulty, run state
   content/         data definitions for enemies, waves, mutations, story
-  presentation/    Pixi renderers, particles, camera, environment
+  presentation/    Pixi renderers, particles, environment
   audio/           music layers and SFX routing
   ui/              HUD, tutorial, draft, imprint choice, results
   dev/             debug overlays and balance tools
@@ -87,8 +87,9 @@ Geometry functions remain deterministic and unit-tested. Rendering may interpola
 
 - Simulation positions use the fixed quarantine-world coordinate system and never depend on canvas dimensions.
 - `Camera2D` is a pure model that owns viewport size, a soft player dead zone, edge clamping, and resize continuity.
-- `GameApp` supplies camera-local spawn bounds while enemy and projectile movement remain clamped to the full world.
+- `WorldSpawnRegion` selects a valid camera-excluded edge band for each wave request while enemy and projectile movement remain clamped to the full world.
 - `LoopPlaygroundRenderer` translates one Pixi world container by the inverse camera origin. Weather, HUD, decisions, and touch controls stay in screen space.
+- The district renderer repeats a replaceable asphalt texture once, caches deterministic ground/prop layers, and redraws only lightweight world lights plus screen-space rain each frame.
 - The Warden owns a local encounter rectangle derived at transition time; both player movement and camera origin are constrained to that rectangle until results.
 
 ## Performance budget

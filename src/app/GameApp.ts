@@ -63,6 +63,7 @@ import {
 } from '../game/run/RunFlow';
 import { FullRunWaveDirector } from '../game/waves/FullRunWaveDirector';
 import { Camera2D } from '../game/world/Camera2D';
+import { selectOffscreenSpawnRegion } from '../game/world/WorldSpawnRegion';
 import {
   TutorialDirector,
   type TutorialStep,
@@ -1164,6 +1165,22 @@ export class GameApp {
 
   private spawnBounds(): EnemyArenaBounds {
     const camera = this.camera.snapshot;
+    const offscreenRegion = selectOffscreenSpawnRegion(
+      camera,
+      QUARANTINE_WORLD_BOUNDS,
+      this.waveDirector.snapshot.totalSpawnRequests,
+      {
+        cameraMargin: WORLD_TUNING.spawnCameraMargin,
+        bandDepth: WORLD_TUNING.spawnBandDepth,
+        flankPadding: WORLD_TUNING.spawnFlankPadding,
+        minimumDepth: WORLD_TUNING.spawnMinimumDepth,
+        minimumSpan: WORLD_TUNING.spawnMinimumSpan,
+      },
+    );
+    if (offscreenRegion !== null) {
+      return offscreenRegion;
+    }
+
     const worldWidth =
       QUARANTINE_WORLD_BOUNDS.maxX - QUARANTINE_WORLD_BOUNDS.minX;
     const worldHeight =
@@ -1171,15 +1188,15 @@ export class GameApp {
     const width = Math.min(
       worldWidth,
       Math.max(
-        WORLD_TUNING.minimumSpawnWidth,
-        camera.viewportWidth + WORLD_TUNING.spawnOverscan * 2,
+        camera.viewportWidth,
+        WORLD_TUNING.spawnMinimumSpan,
       ),
     );
     const height = Math.min(
       worldHeight,
       Math.max(
-        WORLD_TUNING.minimumSpawnHeight,
-        camera.viewportHeight + WORLD_TUNING.spawnOverscan * 2,
+        camera.viewportHeight,
+        WORLD_TUNING.spawnMinimumSpan,
       ),
     );
     return this.centeredWorldBounds(

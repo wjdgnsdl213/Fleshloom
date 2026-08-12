@@ -76,3 +76,14 @@ preserved under `references/generated/production-art-v1/`. The runtime treats
 these images as replaceable production assets: simulation state remains
 independent, actor sprites are pooled, and the earlier procedural drawings
 remain as underlays, readability accents, and load-failure fallbacks.
+
+### P3 quarantine district map
+
+The finite district uses
+`public/assets/art/environment/wet-asphalt-tile-v1.png` as a quiet repeating
+material layer. Its prompt and validation record live under
+`references/generated/quarantine-map-v1/`. World-space Graphics layers add
+authored puddles, worn crossing paint, vents, perimeter barricades, infection
+colonies, and emergency-light bloom. Only rain remains screen-fixed. This keeps
+the styleframe's wet material density without baking gameplay landmarks or
+screen-space lighting into one stretched arena image.

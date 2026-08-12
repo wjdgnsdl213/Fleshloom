@@ -34,7 +34,7 @@ Internal release target: 2026-08-25
 | P0 | Production planning | 정식 버전 로드맵, 완료 규칙, 진행 기록 | Complete |
 | P1 | Korean player-facing choices | 변이·임프린트 선택 이름/설명/수치 한국어화 | Complete |
 | P2 | World and camera foundation | 월드 좌표, 추적 카메라, 화면/월드 계층 분리 | Complete |
-| P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Pending |
+| P3 | Scrollable quarantine map | 4–6화면 유한 맵, 환경 레이어, 스폰/경계 | Complete |
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Pending |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Pending |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Pending |
@@ -119,3 +119,14 @@ Internal release target: 2026-08-25
 - 검증: 카메라 단위 테스트 6개를 포함한 전체 `npm run check`가 30파일/300개 테스트, lint, TypeScript, production build를 모두 통과했다.
 - 남은 시각 검증: 자동 브라우저 런타임을 사용할 수 없어 실제 이동 중 카메라 감속감과 다양한 화면 비율은 수동 확인이 필요하다.
 - Next: P3 반복 가능한 도로 바닥, 환경 레이어, 화면 밖 스폰과 가시적 월드 경계.
+
+### 2026-08-12 — P3 complete
+
+- 승인된 스타일프레임과 기존 환경판을 재질 참고로 사용해 1,254×1,254 젖은 아스팔트 반복 타일을 생성하고 런타임 자산으로 추가했다.
+- 타일 위에 데이터 기반 웅덩이 10개, 격리등 10개, 배수구 6개, 감염 군락 8개, 횡단 표식 3개와 월드 전역 콘크리트 경계를 별도 레이어로 구성했다.
+- 비는 화면에 고정하고, 웅덩이 반사와 경광등은 해당 랜드마크를 따라 월드 공간에서 움직이게 분리했다.
+- 적 스폰은 우·하·좌·상 순환 선호도를 가진 카메라 바깥 띠에서만 선택하고, 월드 가장자리에서는 다음 유효 방향으로 자동 전환한다.
+- 타일을 먼저 불러오고 실패했을 때만 기존 전체 환경판을 요청하도록 해 정상 경로의 중복 배경 다운로드를 제거했다.
+- 검증: 전체 `npm run check`가 32파일/307개 테스트, lint, TypeScript, production build를 통과했다. 개발 서버의 진입점과 새 타일 URL도 HTTP 200을 반환했다.
+- 남은 시각 검증: 자동 브라우저 런타임을 사용할 수 없어 전체 맵 이동 시 타일 이음새, 경계 밀도와 좁은 화면 구도는 수동 플레이 확인이 필요하다.
+- Next: P4 한 번에 죽지 않는 2회 포획 중장갑 일반 적과 난이도 곡선.
