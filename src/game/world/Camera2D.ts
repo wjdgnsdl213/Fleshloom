@@ -26,12 +26,36 @@ export interface Camera2DSnapshot {
   readonly bounds: CameraBounds;
 }
 
+export interface CameraViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 const DEFAULT_DEAD_ZONE_RATIO_X = 0.34;
 const DEFAULT_DEAD_ZONE_RATIO_Y = 0.28;
 const DEFAULT_FOLLOW_SHARPNESS = 9;
 
 const isFinitePositive = (value: number): boolean =>
   Number.isFinite(value) && value > 0;
+
+export const cameraViewportForScreen = (
+  screenWidth: number,
+  screenHeight: number,
+  zoom: number,
+): CameraViewportSize => {
+  if (
+    !isFinitePositive(screenWidth) ||
+    !isFinitePositive(screenHeight) ||
+    !isFinitePositive(zoom)
+  ) {
+    throw new RangeError('screen dimensions and camera zoom must be positive');
+  }
+
+  return Object.freeze({
+    width: screenWidth / zoom,
+    height: screenHeight / zoom,
+  });
+};
 
 const isValidRatio = (value: number): boolean =>
   Number.isFinite(value) && value >= 0 && value <= 1;

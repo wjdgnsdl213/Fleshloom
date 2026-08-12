@@ -14,11 +14,9 @@ const indexPath = join(distRoot, 'index.html');
 
 const startupArtPaths = [
   'assets/art/environment/wet-asphalt-tile-v1.png',
-  'assets/art/characters/carrier-09.png',
-  'assets/art/characters/drifter.png',
+  'assets/art/characters/directional/carrier-directional-sheet-v2.webp',
+  'assets/art/characters/directional/drifter-directional-sheet-v2.webp',
   'assets/art/loop/living-tether-tile-v2.webp',
-  'assets/art/characters/animation/carrier-walk-sheet-v1.webp',
-  'assets/art/characters/animation/drifter-walk-sheet-v1.webp',
 ];
 const startupBudgetBytes = 6 * 1024 * 1024;
 const verifiedArtHashes = new Map([

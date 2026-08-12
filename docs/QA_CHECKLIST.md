@@ -1,10 +1,10 @@
 # FLESHLOOM 릴리스 QA 체크리스트
 
-마지막 갱신: 2026-08-12
+마지막 갱신: 2026-08-13
 
-자동 검증 상태: 통과(40개 파일/337개 테스트, 린트, 타입, 빌드, 정적 자산 검사)
+자동 검증 상태: `npm run release:verify` 통과(46개 파일/376개 테스트, 린트, 타입, 빌드, 30개 공개 자산)
 
-수동 검증 상태: 브라우저 런타임 부재로 미실행
+수동 검증 상태: P7-8 Chrome 데스크톱 포획·3단계 깊이·선택·Warden·결과·적 갤러리 완료; 390×844 선택/결과/활성 테더 완료; 실기기와 전체 런 미실행
 
 ## 1. 자동 릴리스 게이트
 
@@ -13,13 +13,13 @@
 - [x] `dist/`에 `public/`의 모든 유효 자산이 복사되고 빈 파일이 없다.
 - [x] `dist/index.html`의 로컬 JS/CSS 참조가 존재하며 루트 절대 경로를 사용하지 않는다.
 - [x] 빌드 JS에 `/assets/art/...` 형태의 루트 절대 자산 URL이 없다.
-- [x] 시작 필수 아트가 6MiB 이하이다(측정값 5.49MiB).
+- [x] 시작 필수 아트가 6MiB 이하이다(측정값 4.61MiB).
 
 ## 2. 권장 수동 테스트 환경
 
 | 환경 | 화면 | 입력 | 상태 |
 | --- | --- | --- | --- |
-| Chrome 최신 안정판 | 1920×1080 | 키보드 | 미실행 |
+| Chrome 최신 안정판 | 1920×1080 | 포인터 | 실제 포획 6단계 완료 |
 | Edge 최신 안정판 | 1366×768 | 키보드 | 미실행 |
 | Android Chrome 또는 iOS Safari | 390×844 전후 | 실제 터치 | 미실행 |
 
@@ -73,4 +73,9 @@
 
 | 날짜 | 커밋 | 환경 | 결과 | 발견 사항/증빙 |
 | --- | --- | --- | --- | --- |
-| 미실행 | - | - | 대기 | 이 관리 환경에는 제어 가능한 브라우저가 없음 |
+| 2026-08-12 | 4bc51ab | Chrome 1920×1080, 390×844 | P7-3 수정 전 기준 | `references/qa/2026-08-12-4bc51ab-p7-3-*.png`; 과도하게 넓은 FOV, 작은 배우 실루엣, 평면 사각 HUD를 우선 차이로 기록 |
+| 2026-08-12 | 작업 트리 | Chrome 1920×1080, 390×844 | P7-3 첫 패스 GO | `references/qa/2026-08-12-p7-3-after-*.png`; 확대 카메라·배우/적 스케일·비대칭 HUD·결과 화면 겹침 없음. 실제 coarse-pointer 터치 UI와 sustained tether/closure는 대기 |
+| 2026-08-13 | 작업 트리 | Chrome 1920×1080 | P7-5 genuine capture GO | `references/qa/2026-08-13-p7-5-capture-success-*.png`; 실제 pointer 입력으로 preview→closure→contraction→decomposition→intake→recovery, 포획 01, XP 10/30 확인 |
+| 2026-08-13 | 작업 트리 | Chrome 390×844 | P7-5 simulated touch layout GO | `references/qa/2026-08-13-p7-5-active-tether-touch-390x844.png`; 분할 이동/LOOP 입력으로 이동을 유지한 활성 테더 확인. 물리 coarse-pointer 기기 검증은 대기 |
+| 2026-08-13 | 작업 트리 | Chrome 1920×1080 | P7-6/P7-8 desktop visual GO | `references/qa/2026-08-13-p7-6-*`, `p7-7-*`, `p7-8-*`; closure/intake/3-depth gate 독립 GO, Warden 단계·전체 적 고정광 갤러리 확인 |
+| 2026-08-13 | 작업 트리 | Chrome 390×844 | 선택/결과 레이아웃 GO | P7-6 변이·임프린트·Warden core·승리 화면 잘림/겹침 없음. 물리 coarse-pointer 연속 closure는 대기 |

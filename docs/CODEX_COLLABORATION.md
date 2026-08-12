@@ -196,3 +196,47 @@ Open risks / decisions requested:
 - Result: `docs/HANDOFF.md` now owns the project synopsis, embedded completion styleframe, clean-machine setup, implemented inventory, exact P7-3 starting sequence, acceptance criteria, code map, risks, and a copyable next-session prompt. Root `CLAUDE.md` routes Claude to the same binding instructions and active objective.
 - Portability: Node support is declared in `package.json`/lockfile and `.nvmrc` pins the verified 24.16.0 environment. README now exposes the completion target and handoff before implementation detail.
 - Rules: no gameplay, balance, input, progression, presentation, or asset behavior changed in this documentation pass.
+
+### 2026-08-12 / P7-3 representative-screen first pass
+
+- Agent and task: the primary agent captured the pre-change desktop/mobile baseline, diagnosed the largest styleframe gap, and implemented the first bounded composition and interface-depth pass.
+- Files owned: camera composition under `src/game/world` and `src/app`, presentation-only world scaling/shadows under `src/presentation`, district landmarks under `src/content`, DOM surfaces under `src/style.css`, tests, QA evidence, and documentation.
+- Contracts preserved: all simulation positions remain world-space; movement continues while tethering; closure validity, capture membership, rewards, input modes, and progression did not change.
+- Result: a tested 1.42x hunt camera replaces the near-whole-district view, actors gain directional grounding, the starting area gains nearby depth references, and rectangular web panels are replaced by asymmetric bone/tendon instrument surfaces while keeping DOM text.
+- Verification: `npm run release:verify` passes 40 files/338 tests, ESLint, strict TypeScript, production build, 20 public files, base-path checks, and the 5.49MiB startup budget.
+- Visual check: post-change Chrome screenshots at 1920×1080 and 390×844 confirm larger actor/enemy silhouettes, a closer hunt composition, and no static HUD/result overlap. Evidence lives under `references/qa/2026-08-12-p7-3-after-*.png`.
+- Open gate: external keypress automation could not sustain directional input long enough to author a valid loop. A real coarse-pointer phone check and sustained active-tether/closure inspection remain before completion, commit, and push.
+
+### 2026-08-12 / P7-3 second pass: world-fixed actor grounding
+
+- Agent and task: the primary agent answered an owner report that actors rotate like stickers and the scene reads flat, then implemented the bounded presentation fix for it.
+- Files owned: `src/presentation/GroundedLighting.ts` (new), `src/presentation/LoopPlaygroundRenderer.ts`, `tests/unit/presentation/GroundedLighting.test.ts` (new), and documentation. No simulation, content, input, or style files touched in this pass.
+- Contracts preserved: capture membership, layered peel, XP, recovery, imprint choice, Toggle/Hold parity, and movement-while-tethering are unchanged. The new module imports nothing from Pixi and decides no gameplay outcome.
+- Result: each bitmap actor now casts a silhouette shadow, a mirrored wet-road reflection, and an additive key-light rim whose offsets stay screen-fixed while the sprite rotates. This restores an external light source the facing rotation cannot drag around.
+- Verification: ESLint clean, strict TypeScript clean, 41 files/347 tests pass. `npm run release:verify` is blocked by a `vite build` crash (`0xC0000409` in the Rolldown native binding) that reproduces identically on the stashed `4bc51ab` baseline. The shell runs Node 24.12.0 against a pinned 24.16.0.
+- Open gate for the owner: install Node 24.16.0, re-run `npm run release:verify`, then compare a fresh 1920×1080 capture against `references/generated/loop-gameplay-styleframe-v1.png` before commit and push.
+- Known boundary recorded in D-024: interior baked shading still rotates with the sprite. Fully removing the flat read needs P7-4 multi-direction prerendered sheets, which must be budgeted against the 6MiB startup art gate.
+
+### 2026-08-13 / P7-4 depth order and P7-5 directional actors
+
+- Agent split: the write-capable visual director owned only `LoopPlaygroundRenderer.ts`, `DepthOrder.ts`, and its unit test; the primary agent owned directional assets, manifest integration, authored props, browser play QA, verification, and documentation. The reviewer remained read-only.
+- Depth result: actors and presentation-only raised objects now sort by their ground-contact Y. The same block can occlude an actor on one side and be occluded on the other; simulation collision and capture geometry are unchanged.
+- Actor result: Carrier-09 and ordinary Drifters select one of eight fixed-light offline 3D prerenders instead of rotating one decal. Fallback textures and all other enemy contracts remain intact.
+- Environment result: a deferred four-cell quarantine prop atlas supplies a response van, biomass barrier, floodlight, and collapsed shelter as large authored landmarks. Placements are data-driven and carry no collision.
+- Runtime QA: automated pointer input produced a genuine 1920×1080 sequence covering valid preview, closure, contraction, decomposition, intake, and recovery. The resulting HUD recorded one capture and 10/30 XP. A 390×844 pointer run verified simultaneous movement plus an active living tether and non-overlapping split touch controls.
+- Review: the initial P7-3 fidelity audit returned NO-GO for fixed draw order, rotating decals, and missing capture evidence. P7-4/P7-5 directly close those three blockers. Remaining release work is physical coarse-pointer device feel, complete run/boss sampling, and final public deployment smoke testing.
+### 2026-08-13 / P7-6 through P7-8 visual closure
+
+- Agent split: the visual director owned bounded renderer/content presentation passes while the primary integrated generated directional atlases, QA scenes, browser evidence, release verification, and docs. The reviewer remained read-only and independently judged the visual gates.
+- Capture/environment: interior placeholder boxes were replaced by 11 authored landmarks across foreground, midground, and background. Closure now has a 2–3 frame lethal seam; three heavy intake conduits visibly reach Carrier-09 and finish with an arrival pulse. The independent P7-6 audit returned GO for all three desktop visual gates.
+- Boss: Warden no longer rotates as a bitmap or relies on giant flat full-circle overlays. It uses a grounded large body, projected segmented bone/tendon anatomy, restrained arterial seams, screen-fixed light, and distinct arms/shell/core weak-point language without changing authoritative radii or capture rules.
+- Late actors: Armored Drifter, Rusher, Watcher, Cutter, Mimic, Elite Husk, and the stable Warden frame now use deferred 4×2 fixed-light directional atlases. All pooled directional sprites, rims, shadows, and reflections keep zero rotation; original walk/static/procedural assets remain fallbacks.
+- Runtime evidence: real Chrome captures cover P7-6 capture and environment, P7-7 Warden stages, P7-8 seven-enemy gallery, Korean choices/results at 1920×1080, plus 390×844 choices/results and active tether. Evidence is under `references/qa/2026-08-13-p7-{6,7,8}-*`.
+- Verification: `npm run release:verify` passes 46 files/376 tests, ESLint, strict TypeScript, production build, 30 public files, 12 index references, 4.61MiB startup art, and 19.15MiB total public payload. Narrow visual/input coverage passes 9 files/58 tests.
+- Remaining release evidence: physical Android/iOS coarse-pointer movement+LOOP closure, full 10–12 minute victory/death/Web Audio runs, and public/backup deployment smoke tests. These do not reopen the desktop visual GO.
+
+### 2026-08-13 / P7-9 exposed-shell regression
+
+- Read-only review found one executable rotating-decal fallback after an armored Drifter lost its shell.
+- Exposed armored Drifters now select the ordinary fixed-light directional atlas while preserving the existing arterial exposed tint and all peel/capture/reward rules.
+- A pure regression test pins armored→exposed family selection and zero bitmap rotation; runtime evidence is `references/qa/2026-08-13-p7-9-exposed-armored-directional-1920x1080.png`.

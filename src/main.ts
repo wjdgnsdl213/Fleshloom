@@ -1,5 +1,9 @@
 import './style.css';
-import { GameApp, type GameStatus } from './app/GameApp';
+import {
+  GameApp,
+  type GameQaScene,
+  type GameStatus,
+} from './app/GameApp';
 import {
   describeMutationUpgradeKo,
   getImprintChoicePresentationKo,
@@ -138,6 +142,30 @@ root.innerHTML = `
     </footer>
   </div>
 `;
+
+const qaParameters = new URLSearchParams(window.location.search);
+const qaTouch = import.meta.env.DEV && qaParameters.has('qaTouch');
+const qaSceneIds: readonly GameQaScene[] = [
+  'enemy-gallery',
+  'exposed-armored',
+  'mutation',
+  'imprint',
+  'warden-arrival',
+  'warden-arms',
+  'warden-shell',
+  'warden-core',
+  'victory',
+];
+const requestedQaScene = qaParameters.get('qaScene');
+const qaScene =
+  import.meta.env.DEV &&
+  qaSceneIds.includes(requestedQaScene as GameQaScene)
+    ? (requestedQaScene as GameQaScene)
+    : undefined;
+
+if (qaTouch) {
+  root.dataset.qaTouch = 'true';
+}
 
 const requiredElement = <T extends Element>(selector: string): T => {
   const element = root.querySelector<T>(selector);
@@ -360,7 +388,14 @@ const updateHud = (status: GameStatus): void => {
     runTimeReadout.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} / 09:00`;
   } else {
     const wardenSeconds = Math.floor(status.wardenSeconds);
-    const progress = `${Math.min(status.wardenProgress, status.wardenProgressRequired)} / ${status.wardenProgressRequired}`;
+    const completed = Math.min(
+      status.wardenProgress,
+      status.wardenProgressRequired,
+    );
+    const progress =
+      status.wardenStage === 'arrival'
+        ? `${completed.toFixed(1)} / ${status.wardenProgressRequired.toFixed(1)}`
+        : `${Math.floor(completed)} / ${Math.floor(status.wardenProgressRequired)}`;
     runTimeReadout.textContent = `워든 ${wardenSeconds.toString().padStart(2, '0')}초 · ${progress}`;
   }
 
@@ -428,7 +463,10 @@ const updateHud = (status: GameStatus): void => {
   }
 };
 
-const game = new GameApp(updateHud);
+const game = new GameApp(
+  updateHud,
+  qaScene === undefined ? {} : { qaScene },
+);
 let selectedLoopMode: GameStatus['inputMode'] = 'toggle';
 
 const toggleLoopMode = (): void => {

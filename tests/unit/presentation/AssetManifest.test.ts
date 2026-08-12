@@ -9,6 +9,16 @@ import {
 } from '../../../src/presentation/AssetManifest';
 
 describe('asset manifest', () => {
+  const deferredDirectionalKeys = [
+    'armoredDrifterDirectional',
+    'rusherDirectional',
+    'watcherDirectional',
+    'cutterDirectional',
+    'mimicDirectional',
+    'eliteHuskDirectional',
+    'wardenDirectional',
+  ] as const;
+
   it('resolves public assets against root and nested deployment bases', () => {
     const path = 'assets/art/characters/carrier-09.png';
 
@@ -26,14 +36,17 @@ describe('asset manifest', () => {
   it('keeps the startup payload focused on assets required for first input', () => {
     expect(STARTUP_ART_ASSET_KEYS).toEqual([
       'asphaltTile',
-      'carrier',
-      'drifter',
+      'carrierDirectional',
+      'drifterDirectional',
       'tether',
-      'carrierWalk',
-      'drifterWalk',
     ]);
     expect(STARTUP_ART_ASSET_KEYS).not.toContain('armoredDrifter');
+    expect(STARTUP_ART_ASSET_KEYS).not.toContain('quarantineProps');
     expect(STARTUP_ART_ASSET_KEYS).not.toContain('warden');
+    for (const key of deferredDirectionalKeys) {
+      expect(STARTUP_ART_ASSET_KEYS).not.toContain(key);
+      expect(DEFERRED_ART_ASSET_KEYS).toContain(key);
+    }
   });
 
   it('assigns every production art asset to exactly one loading phase', () => {
@@ -52,6 +65,9 @@ describe('asset manifest', () => {
 
     expect(urls.armoredDrifter).toBe(
       '/Fleshloom/assets/art/enemies/armored-drifter.png',
+    );
+    expect(urls.rusherDirectional).toBe(
+      '/Fleshloom/assets/art/characters/directional/rusher-directional-sheet-v1.webp',
     );
     expect(Object.keys(urls)).toHaveLength(Object.keys(ART_ASSET_PATHS).length);
   });

@@ -18,6 +18,7 @@ export const QUARANTINE_WORLD_START = Object.freeze({
 });
 
 export const WORLD_TUNING = Object.freeze({
+  cameraZoom: 1.42,
   cameraDeadZoneRatioX: 0.34,
   cameraDeadZoneRatioY: 0.28,
   cameraFollowSharpness: 9,

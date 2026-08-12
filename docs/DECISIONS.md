@@ -155,3 +155,37 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Status: accepted
 - Decision: startup waits for the asphalt tile, Carrier, Drifter, and living tether only. Later enemies and Warden begin loading in the background after the canvas is attached. The full street plate is a startup fallback only when the asphalt tile fails. Every public art URL is resolved from Vite's deployment base rather than the site root.
 - Reason: the former 16.2MiB all-at-once image gate delayed the title even though most assets cannot appear during onboarding. A 6MiB startup budget makes first input faster and keeps the same production artwork, while base-aware URLs allow the same `dist/` to run at a domain root or repository sub-path.
+
+## D-023 — The hunt camera uses a fixed presentation zoom
+
+- Date: 2026-08-12
+- Status: accepted for P7-3 visual play test
+- Decision: the finite-world camera converts screen pixels to a world-space viewport at 1.42x presentation zoom. Simulation coordinates, loop geometry, collision, and rewards remain unchanged; rendering scales the world layer once around the same camera origin.
+- Reason: the previous one-world-unit-per-pixel view made Carrier-09 and enemies read as small flat decals inside a dominant asphalt field. A closer fixed hunt camera restores the approved styleframe hierarchy without moving the game into a real-time 3D renderer.
+
+## D-024 — Actor lighting cues stay world-fixed while sprites rotate
+
+- Date: 2026-08-12
+- Status: accepted for P7-3 visual play test
+- Decision: every bitmap actor now draws three pooled companion sprites from its own texture — a silhouette cast shadow offset down-right, a mirrored wet-road reflection, and an additive bone rim offset toward the key light. The offsets come from `src/presentation/GroundedLighting.ts` and are screen-fixed, so they do not follow the sprite's facing rotation. Companions copy the actor's texture, rotation, and deformation, carry no hit information, and hide with the actor.
+- Reason: production actor art bakes one light direction, and the runtime rotates the whole sprite to follow facing. That drags the baked light around with the body, which is the direct cause of the "rotating sticker" read. World-fixed shadow, reflection, and rim restore an external light the rotation cannot move, without new art, without a runtime 3D renderer, and without touching capture or reward rules.
+- Boundary: this reduces but does not remove the flat read. The baked interior shading still rotates. Removing that requires the P7-4 multi-direction prerender, which must be planned together with the 6MiB startup art budget.
+
+## D-025 — District objects render as extruded volumes, not ground decals
+
+- Date: 2026-08-12
+- Status: accepted for P7-3 visual play test
+- Decision: raised world objects draw through `src/presentation/ExtrudedVolume.ts` as a cast shadow, the near side faces, and a top face lifted up-screen from the ground footprint. Perimeter barricades were converted from flat quads, and `DISTRICT_BLOCKS` adds slabs, crates, rubble, and perimeter barriers across the district. The ground gains a district-wide darkening pass with cold light pools around each emergency light.
+- Reason: before this change not one object in the world drew a side face or cast a shadow, and the 3,200x1,800 road carried a single flat alpha. In a 3/4 top-down camera that combination is the direct cause of the flat read — depth in the approved styleframe comes almost entirely from objects showing top surface, side surface, and ground shadow.
+- Rules: street blocks are presentation only. They carry no collision, no capture role, and no reward, so movement, loop geometry, and capture membership are unchanged. Interior block heights stay low so actors passing over them stays plausible without adding collision; tall pieces sit in the perimeter band.
+- Palette: light pools use cold wet-asphalt tone, not lamp colour, so arterial red stays reserved for the loop and capture beat.
+
+## D-026 — Gameplay actors use fixed-light directional prerenders
+
+- Date: 2026-08-13
+- Status: accepted for P7-5 visual play test
+- Decision: Carrier-09 and the onboarding Drifter use eight offline-rendered directions in a 4×2 WebP atlas. Runtime facing selects a frame instead of rotating the bitmap, so the upper-left key light, silhouette height, and contact plane stay fixed. Existing art remains the loading fallback.
+- Depth: Carrier, Drifters, raised district blocks, and large quarantine props share one presentation-only sortable layer keyed from their ground-contact Y. Shadows and reflections stay below; telegraphs, projectiles, tether, and capture feedback stay above.
+- Rules: props and blocks remain visual landmarks only. They add no collision, capture membership, rewards, or path constraints, preserving D-019 and D-025.
+- Budget: the two directional startup atlases total about 0.65MiB. Environment props load after the canvas attaches; the release verifier remains the authority for the 6MiB startup gate.
+- Reason: fixed-light directional renders and footpoint sorting remove the rotating-decal and fixed-stack reads without moving simulation into Pixi or adding a runtime 3D dependency.

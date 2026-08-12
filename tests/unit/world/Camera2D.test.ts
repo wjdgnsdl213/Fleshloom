@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Camera2D } from '../../../src/game/world/Camera2D';
+import {
+  Camera2D,
+  cameraViewportForScreen,
+} from '../../../src/game/world/Camera2D';
 
 const bounds = Object.freeze({
   minX: 0,
@@ -19,6 +22,16 @@ const createCamera = (): Camera2D =>
   });
 
 describe('Camera2D', () => {
+  it('converts screen pixels into a zoomed world-space viewport', () => {
+    expect(cameraViewportForScreen(1_920, 1_080, 1.5)).toEqual({
+      width: 1_280,
+      height: 720,
+    });
+    expect(() => cameraViewportForScreen(1_920, 1_080, 0)).toThrow(
+      RangeError,
+    );
+  });
+
   it('centers on a target and returns an immutable snapshot', () => {
     const camera = createCamera();
 

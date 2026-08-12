@@ -38,7 +38,7 @@ Internal release target: 2026-08-25
 | P4 | Layered ordinary enemies | 2회 포획 중장갑 개체, 시각적 외피, 웨이브 배치 | Complete |
 | P5 | Production presentation | 최종 캐릭터/적 애니메이션, VFX, HUD, 오디오 | Complete |
 | P6 | Release QA | 전체 런, 모바일, 성능, 브라우저, 배포 자료 | Manual gate pending |
-| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 화면 정합 | P7-2 implemented · manual visual gate |
+| P7 | Styleframe fidelity | 진화 문서, 보행 모션, 생체 고리, 방향별 배우, 깊이 정렬, 화면 정합 | P7-9 desktop visual GO candidate · physical-device/full-run/deploy gate |
 
 ## Workstream contracts
 
@@ -188,3 +188,48 @@ Internal release target: 2026-08-25
 - Verification: targeted geometry/manifest tests pass 2 files/10 tests. Final `npm run release:verify` passes 40 files/337 tests, ESLint, strict TypeScript, production build, the reviewed tether SHA, 20 public-file copies, 12 index references, 5.49MiB startup art under the 6MiB budget, and 17.28MiB total public payload.
 - Manual visual risk: the Browser runtime reported no available backend. Live curve thickness, hook cadence, capture timing, and frame pacing still require owner inspection at laptop and phone widths.
 - Next: P7-3 representative-screen composition and a side-by-side styleframe fidelity pass.
+
+### 2026-08-12 — P7-3 representative-screen first pass
+
+- Captured the unmodified 4bc51ab baseline at 1920×1080 and 390×844 under `references/qa/`. The largest measured gap was composition: one screen exposed almost the full 3,200×1,800 district, leaving actors and the living tether much smaller than the approved styleframe.
+- Added a tested 1.42x fixed presentation zoom while preserving world-space simulation, camera bounds, capture geometry, and the shared input contract.
+- Strengthened directional cast/contact shadows and placed a puddle, two emergency lights, and a vent around the starting hunt area so Carrier-09 has nearby depth and material references instead of floating over uninterrupted asphalt.
+- Reworked HUD, title, tutorial, settings, and choice surfaces from uniform translucent rectangles into restrained asymmetric instrument plates with broken corners, inset depth, bone pips, and localized arterial accents. Text remains accessible DOM content.
+- Verification: `npm run release:verify` passes 40 files/338 tests, ESLint, strict TypeScript, production build, public assets, base-path checks, and the 5.49MiB startup budget.
+- Post-change Chrome evidence now covers title/gameplay at 1920×1080, live enemy scale, and gameplay/results at 390×844 under `references/qa/`. Actors and HUD read larger without overlap in these viewports. A real coarse-pointer phone check and sustained active-tether/closure capture still remain before P7-3 is marked complete.
+
+### 2026-08-12 — P7-3 second pass: world-fixed actor grounding
+
+- Owner report: actors read as rotating stickers and the scene reads flat. Diagnosis confirmed in code: `LoopPlaygroundRenderer` rotates each whole sprite to its facing (`sprite.rotation = angle + Math.PI * 0.5`), and each production texture bakes a single light direction, so the baked light rotates with the body. The walk sheets are four frames of one authored direction, so facing changes never change perspective.
+- Added `src/presentation/GroundedLighting.ts`: pure, Pixi-free helpers returning screen-fixed cast-shadow, wet-reflection, and rim offsets from body radius and current sprite scale. Nine unit tests cover light-direction normalization, radius scaling, foreshortening, grounding strength falloff, reduced-motion wobble collapse, rim/shadow opposition, and degenerate input.
+- Wired three pooled companion sprites per actor into new `actorReflectionLayer`, `actorShadowLayer`, and `actorRimLayer` containers around the existing `assetActors`. Companions reuse the actor texture so gait, stagger, breathing, and closure deformation stay in sync; each blend mode owns a layer so batching holds.
+- Rules untouched: no simulation, capture geometry, layered peel, XP, reward, or input change. Companions are hidden with their actor and never consulted for hit resolution.
+- Verification: ESLint clean, strict TypeScript clean, 41 files/347 tests pass. `npm run release:verify` could not complete — `vite build` aborts with `0xC0000409` (stack buffer overrun) inside the Rolldown native binding. The same crash reproduces on the unmodified `4bc51ab` baseline with all work stashed, so it is environmental, not a regression. The shell runs Node 24.12.0 while `.nvmrc` pins the verified 24.16.0.
+- Blocked: build gate, post-change capture, and commit/push wait on a Node 24.16.0 environment and an owner visual check.
+- Next: after the visual check, scope P7-4 multi-direction prerendered actor sheets against the 6MiB startup art budget.
+
+### 2026-08-12 — P7-3 third pass: district volumes and ground lighting
+
+- Owner report after the grounding pass: the scene still reads 2D overall, not just the actors. Re-diagnosis found the structural cause in the environment, not the characters. `drawConcreteBlock` filled perimeter barricades as flat oriented quads; every entry in `quarantineDistrict.ts` — puddles, lights, vents, crosswalks, biomass — was a decal painted on the ground plane; and `drawEnvironment` covered all 3,200x1,800 with one constant-alpha fill. No world object drew a side face or cast a shadow, and the road had no tone variation.
+- Added `src/presentation/ExtrudedVolume.ts`: pure projection helpers for top-face lift, cast-shadow reach, oriented footprints, viewer-facing side selection, per-face shading against the fixed key light, and per-channel colour shading. Ten unit tests cover winding, visibility culling, degenerate footprints, and colour clamping.
+- Converted perimeter barricades to real volumes and added `DISTRICT_BLOCKS`: 28 slabs, crates, rubble piles, and perimeter barriers, drawn back-to-front so nearer volumes overlap. Interior heights stay 11–30 world units, perimeter pieces 36–41.
+- Added `drawGroundLighting`: a district-wide darkening pass with cold light pools around each emergency light and faint rain haze in the far bands, so the road carries near/far tone variation.
+- Rules untouched: blocks are presentation only with no collision, capture role, or reward. Loop geometry, capture membership, XP, input, and camera are unchanged.
+- Verification: ESLint clean, strict TypeScript clean, 42 files/357 tests pass. The `vite build` gate remains blocked by the environmental Rolldown crash described in the previous entry.
+- Open: owner visual check at 1920×1080 against the styleframe, then tuning of block density, light pool strength, and volume height before commit.
+
+### 2026-08-13 — P7-4 depth order and P7-5 directional actors
+
+- Shared footpoint sorting now places raised blocks, authored props, Carrier-09, and ordinary Drifters in one presentation-only depth layer; combat overlays remain readable above it.
+- Carrier-09 and ordinary Drifters use original eight-direction fixed-light prerender atlases, eliminating runtime bitmap rotation for the most common first-minute actors.
+- A deferred four-cell quarantine prop atlas and data-driven placements add large foreground, midground, and background landmarks without collision or simulation changes.
+- Chrome QA captured a real one-enemy loop from preview through reward recovery at 1920×1080 and an active movement+tether state at 390×844. Evidence is stored under `references/qa/2026-08-13-p7-5-*`.
+- Automated gate: ESLint and all 44 test files/365 tests pass; strict TypeScript and a clean production build pass. Physical phone feel, complete run/boss screens, and deployment smoke tests remain.
+
+### 2026-08-13 — P7-6 through P7-8 visual closure
+
+- Replaced representative interior placeholder volumes with 11 authored 3-band landmarks while preserving presentation-only traversal.
+- Strengthened the 0.82-second capture beat with a distinct closure seam, three readable intake conduits, and a Carrier arrival pulse; the independent desktop audit returned GO.
+- Rebuilt Warden presentation as a grounded, nonrotating 2.5D anatomical boss with stage-specific arms/shell/core targets and segmented telegraphs.
+- Added deferred fixed-light 8-direction atlases for every late enemy family, plus a stable Warden frame, without increasing the 4.61MiB startup payload.
+- `npm run release:verify` passes 46 files/376 tests, build, 30 public files, and 19.15MiB total payload. Remaining release evidence is physical mobile, full-run audio, and deployment smoke testing.

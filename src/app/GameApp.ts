@@ -63,7 +63,10 @@ import {
   type RunScene,
 } from '../game/run/RunFlow';
 import { FullRunWaveDirector } from '../game/waves/FullRunWaveDirector';
-import { Camera2D } from '../game/world/Camera2D';
+import {
+  Camera2D,
+  cameraViewportForScreen,
+} from '../game/world/Camera2D';
 import { selectOffscreenSpawnRegion } from '../game/world/WorldSpawnRegion';
 import {
   TutorialDirector,
@@ -142,6 +145,22 @@ export interface GameStatus {
 }
 
 export type AudioChannel = 'master' | 'music' | 'sfx';
+
+export type GameQaScene =
+  | 'enemy-gallery'
+  | 'exposed-armored'
+  | 'mutation'
+  | 'imprint'
+  | 'warden-arrival'
+  | 'warden-arms'
+  | 'warden-shell'
+  | 'warden-core'
+  | 'victory';
+
+export interface GameAppOptions {
+  /** Development-only representative state. Production never supplies it. */
+  readonly qaScene?: GameQaScene;
+}
 
 interface MutableClosureEcho {
   readonly closure: LoopClosure;
@@ -255,7 +274,10 @@ export class GameApp {
   private reducedMotion = false;
   private reducedFlash = false;
 
-  public constructor(private readonly onStatus: (status: GameStatus) => void) {}
+  public constructor(
+    private readonly onStatus: (status: GameStatus) => void,
+    private readonly options: GameAppOptions = {},
+  ) {}
 
   public async start(host: HTMLElement): Promise<void> {
     await this.app.init({
@@ -1154,12 +1176,17 @@ export class GameApp {
   private syncCameraViewport(): void {
     const width = Math.max(1, this.app.screen.width);
     const height = Math.max(1, this.app.screen.height);
+    const viewport = cameraViewportForScreen(
+      width,
+      height,
+      WORLD_TUNING.cameraZoom,
+    );
     const camera = this.camera.snapshot;
     if (
-      camera.viewportWidth !== width ||
-      camera.viewportHeight !== height
+      camera.viewportWidth !== viewport.width ||
+      camera.viewportHeight !== viewport.height
     ) {
-      this.camera.resize(width, height);
+      this.camera.resize(viewport.width, viewport.height);
     }
   }
 
@@ -2091,7 +2118,135 @@ export class GameApp {
     this.unspentChoicesAtTransition = 0;
     this.gatheredImprints.clear();
     this.lastStatusSignature = '';
+    this.applyQaScene();
     this.publishStatus('idle', 0, null);
+  }
+
+  private applyQaScene(): void {
+    const scene = this.options.qaScene;
+    if (scene === undefined) {
+      return;
+    }
+
+    if (scene === 'mutation') {
+      this.experience.gain(this.experience.snapshot.xpForNextLevel);
+      this.ensureMutationDraft();
+      return;
+    }
+    if (scene === 'imprint') {
+      this.imprint.offer(['blade', 'symmetry']);
+      this.choiceClock.openImprint();
+      return;
+    }
+    if (scene === 'enemy-gallery') {
+      const { x, y } = this.player;
+      this.enemies = [
+        new EnemyModel({ id: 'qa-drifter', archetype: 'drifter', position: { x: x - 300, y: y - 125 }, phase: 0 }),
+        new EnemyModel({ id: 'qa-armored-drifter', archetype: 'drifter', position: { x: x - 105, y: y - 145 }, phase: 0.8, captureProfile: 'armored' }),
+        new EnemyModel({ id: 'qa-rusher', archetype: 'rusher', position: { x: x + 125, y: y - 140 }, phase: 1.6 }),
+        new EnemyModel({ id: 'qa-watcher', archetype: 'watcher', position: { x: x + 320, y: y - 95 }, phase: 2.4 }),
+      ];
+      this.cutters = [new CutterModel({ id: 'qa-cutter', position: { x: x - 250, y: y + 135 }, phase: 3.2 })];
+      this.mimics = [new MimicModel({ id: 'qa-mimic', position: { x, y: y + 165 }, phase: 4 })];
+      this.eliteHusks = [new EliteHuskModel({ id: 'qa-elite-husk', position: { x: x + 270, y: y + 145 }, phase: 4.8 })];
+      return;
+    }
+    if (scene === 'exposed-armored') {
+      const exposed = new EnemyModel({
+        id: 'qa-exposed-armored',
+        archetype: 'drifter',
+        position: { x: this.player.x + 170, y: this.player.y },
+        phase: 0,
+        captureProfile: 'armored',
+      });
+      exposed.capture();
+      this.enemies = [exposed];
+      this.cutters = [];
+      this.mimics = [];
+      this.eliteHusks = [];
+      return;
+    }
+
+    this.beginWardenEncounter();
+    if (scene === 'warden-arrival') {
+      return;
+    }
+
+    const warden = this.warden;
+    if (warden === null) {
+      return;
+    }
+    const context = {
+      playerPosition: this.player,
+      bounds: this.wardenBounds(),
+    };
+    for (let step = 0; step < 12; step += 1) {
+      warden.step(0.1, context);
+    }
+    this.feedbackTime = 0;
+    if (scene === 'warden-arms') {
+      this.feedbackState = 'warden-arms';
+      return;
+    }
+
+    const armClosure = this.qaClosureAround(
+      warden.snapshot.armTargets.map((target) => target.position),
+      30,
+    );
+    warden.capture([armClosure]);
+    warden.capture([armClosure]);
+    if (scene === 'warden-shell') {
+      this.feedbackState = 'warden-shell';
+      return;
+    }
+
+    const shellClosure = this.qaClosureAround([warden.snapshot.center], 72);
+    warden.capture([shellClosure]);
+    warden.capture([shellClosure]);
+    if (scene === 'warden-core') {
+      this.feedbackState = 'warden-core';
+      return;
+    }
+
+    this.runFlow.finishVictory({
+      outcome: 'victory',
+      huntSeconds: 540,
+      wardenSeconds: 91,
+      captured: 42,
+      level: 9,
+      activeImprint: 'symmetry',
+      mutations: [
+        { id: 'strider', rank: 2 },
+        { id: 'marrow', rank: 2 },
+        { id: 'mirror-organ', rank: 1 },
+        { id: 'fourfold-hunt', rank: 1 },
+      ],
+      fourfold: true,
+      unspentChoices: 0,
+    });
+    this.runFlow.updatePresentation(2);
+  }
+
+  private qaClosureAround(
+    points: readonly Vec2[],
+    margin: number,
+  ): LoopClosure {
+    const minX = Math.min(...points.map((point) => point.x)) - margin;
+    const maxX = Math.max(...points.map((point) => point.x)) + margin;
+    const minY = Math.min(...points.map((point) => point.y)) - margin;
+    const maxY = Math.max(...points.map((point) => point.y)) + margin;
+    const snapPoint = { x: minX, y: minY };
+    return Object.freeze({
+      points: Object.freeze([
+        snapPoint,
+        { x: maxX, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ]),
+      area: (maxX - minX) * (maxY - minY),
+      kind: 'direct',
+      snapPoint,
+    });
   }
 
   private createMutationDraft(): MutationDraft {

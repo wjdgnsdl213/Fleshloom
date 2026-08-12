@@ -14,10 +14,15 @@ import type { EnemyCaptureProfile } from '../content/enemies';
 import type { FullRunEnemyArchetype } from '../content/fullRunEnemies';
 import {
   DISTRICT_BIOMASS,
+  DISTRICT_BLOCKS,
   DISTRICT_CROSSWALKS,
   DISTRICT_LIGHTS,
   DISTRICT_PUDDLES,
+  DISTRICT_PROPS,
   DISTRICT_VENTS,
+  type DistrictBlockKind,
+  type DistrictPropBand,
+  type DistrictPropKind,
 } from '../content/quarantineDistrict';
 import { GAMEPLAY_COLORS, PLAYGROUND_TUNING } from '../config/graphics';
 import type { WorldBounds } from '../config/world';
@@ -26,6 +31,7 @@ import { lerpVec2, type Vec2 } from '../core/geometry/vector';
 import type {
   WardenAttackGeometry,
   WardenSnapshot,
+  WardenStage,
 } from '../game/boss/WardenModel';
 import type {
   LoopClosure,
@@ -33,6 +39,26 @@ import type {
 } from '../game/loop/LoopPath';
 import type { Camera2DSnapshot } from '../game/world/Camera2D';
 import { ART_ASSET_URLS } from './AssetManifest';
+import { actorDepthKey, blockDepthKey } from './DepthOrder';
+import {
+  directionalFrameIndexForAngle,
+  directionalFrameIndexForVector,
+} from './DirectionalAtlas';
+import {
+  GROUNDED_LIGHTING,
+  resolveCastShadow,
+  resolveRimOffset,
+  resolveWetReflection,
+} from './GroundedLighting';
+import {
+  orientedQuadCorners,
+  shadeColor,
+  translateFootprint,
+  visibleSideFaces,
+  VOLUME_PROJECTION,
+  volumeShadowOffset,
+  volumeTopOffset,
+} from './ExtrudedVolume';
 import {
   advanceWalkDistance,
   sampleWalkCycle,
@@ -52,7 +78,210 @@ const ASPHALT_TILE_SCALE = 0.58;
 const WORLD_BARRIER_INSET = 34;
 const WORLD_BARRIER_LENGTH = 92;
 const WORLD_BARRIER_DEPTH = 34;
+const WORLD_BARRIER_HEIGHT = 30;
+const GROUND_LIGHT_RINGS = 5;
+const GROUND_LIGHT_RADIUS = 420;
+const GROUND_HAZE_POOLS = 6;
+const WARDEN_PRESENTATION_RADIUS = 66;
+const ENEMY_DIRECTION_VELOCITY_EPSILON = 0.01;
+const STREET_BLOCK_COLORS: Readonly<Record<DistrictBlockKind, number>> =
+  Object.freeze({
+    slab: 0x2a3238,
+    crate: 0x3a3126,
+    rubble: 0x232a2f,
+    barrier: 0x2f383e,
+  });
 const EMPTY_WALK_TEXTURES: readonly Texture[] = Object.freeze([]);
+const DISTRICT_PROP_FRAME: Readonly<Record<DistrictPropKind, number>> =
+  Object.freeze({
+    'response-van': 0,
+    'bio-barrier': 1,
+    floodlight: 2,
+    'collapsed-shelter': 3,
+  });
+const DISTRICT_PROP_BAND_TREATMENT: Readonly<
+  Record<DistrictPropBand, { readonly alpha: number; readonly tint: number }>
+> = Object.freeze({
+  background: { alpha: 0.82, tint: 0xb2bec2 },
+  midground: { alpha: 0.93, tint: 0xd2d0c8 },
+  foreground: { alpha: 1, tint: 0xffffff },
+});
+
+export interface CapturePresentationStrengths {
+  readonly closureBang: number;
+  readonly intakeTrail: number;
+  readonly arrivalPulse: number;
+}
+
+export type WardenWeakPointShape =
+  | 'none'
+  | 'socket'
+  | 'vascular-seam'
+  | 'control-triad'
+  | 'collapse';
+
+export interface WardenStagePresentation {
+  readonly bodyTint: number;
+  readonly seamColor: number;
+  readonly targetColor: number;
+  readonly telegraphColor: number;
+  readonly weakPointShape: WardenWeakPointShape;
+  readonly emissiveAlpha: number;
+}
+
+/** Locked-palette treatment for each Warden phase; gameplay state is untouched. */
+export function wardenStagePresentation(
+  stage: WardenStage,
+  reducedFlash: boolean,
+): WardenStagePresentation {
+  const emissiveScale = reducedFlash ? 0.52 : 1;
+  const shared = {
+    telegraphColor: GAMEPLAY_COLORS.amber,
+    targetColor: GAMEPLAY_COLORS.hostileCyan,
+  } as const;
+
+  switch (stage) {
+    case 'arrival':
+      return Object.freeze({
+        ...shared,
+        bodyTint: 0xabb5b4,
+        seamColor: GAMEPLAY_COLORS.tendon,
+        weakPointShape: 'none',
+        emissiveAlpha: 0.18 * emissiveScale,
+      });
+    case 'arms':
+      return Object.freeze({
+        ...shared,
+        bodyTint: 0xffffff,
+        seamColor: GAMEPLAY_COLORS.arterial,
+        weakPointShape: 'socket',
+        emissiveAlpha: 0.34 * emissiveScale,
+      });
+    case 'shell':
+      return Object.freeze({
+        ...shared,
+        bodyTint: 0xf0e7d2,
+        seamColor: GAMEPLAY_COLORS.arterial,
+        weakPointShape: 'vascular-seam',
+        emissiveAlpha: 0.3 * emissiveScale,
+      });
+    case 'core':
+      return Object.freeze({
+        ...shared,
+        bodyTint: 0xffc6b5,
+        seamColor: GAMEPLAY_COLORS.arterialBright,
+        weakPointShape: 'control-triad',
+        emissiveAlpha: 0.48 * emissiveScale,
+      });
+    case 'defeated':
+      return Object.freeze({
+        ...shared,
+        bodyTint: 0xb9655e,
+        seamColor: GAMEPLAY_COLORS.arterial,
+        weakPointShape: 'collapse',
+        emissiveAlpha: 0.16 * emissiveScale,
+      });
+  }
+}
+
+export interface ProjectedEllipseArc {
+  readonly center: Vec2;
+  readonly radiusX: number;
+  readonly radiusY: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly rotation?: number;
+  readonly segments?: number;
+}
+
+/** Samples an oriented ellipse arc for reusable, testable 2.5D segmentation. */
+export function sampleProjectedEllipseArc(
+  arc: ProjectedEllipseArc,
+): readonly Vec2[] {
+  const segments = Math.max(2, Math.floor(arc.segments ?? 10));
+  const rotation = arc.rotation ?? 0;
+  const cosRotation = Math.cos(rotation);
+  const sinRotation = Math.sin(rotation);
+  const points: Vec2[] = [];
+
+  for (let index = 0; index <= segments; index += 1) {
+    const progress = index / segments;
+    const angle =
+      arc.startAngle + (arc.endAngle - arc.startAngle) * progress;
+    const localX = Math.cos(angle) * arc.radiusX;
+    const localY = Math.sin(angle) * arc.radiusY;
+    points.push(
+      Object.freeze({
+        x: arc.center.x + localX * cosRotation - localY * sinRotation,
+        y: arc.center.y + localX * sinRotation + localY * cosRotation,
+      }),
+    );
+  }
+
+  return Object.freeze(points);
+}
+
+/** Resolves velocity first, then authored facing, then the last stable frame. */
+export function enemyDirectionalFrameIndex(
+  velocity: Vec2,
+  facing: Vec2,
+  fallbackIndex = 4,
+): number {
+  if (
+    Number.isFinite(velocity.x) &&
+    Number.isFinite(velocity.y) &&
+    Math.hypot(velocity.x, velocity.y) >= ENEMY_DIRECTION_VELOCITY_EPSILON
+  ) {
+    return directionalFrameIndexForVector(
+      velocity.x,
+      velocity.y,
+      fallbackIndex,
+    );
+  }
+  return directionalFrameIndexForVector(
+    facing.x,
+    facing.y,
+    fallbackIndex,
+  );
+}
+
+/** Directional frames already contain facing; only legacy textures rotate. */
+export function enemySpriteRotation(
+  usesDirectionalTexture: boolean,
+  legacyRotation: number,
+): number {
+  return usesDirectionalTexture ? 0 : legacyRotation;
+}
+
+export type DrifterDirectionalFamily = 'ordinary' | 'armored';
+
+/** Exposed armored Drifters visually return to the ordinary directional body. */
+export function drifterDirectionalFamily(
+  captureProfile: EnemyCaptureProfile | undefined,
+  armored: boolean | undefined,
+): DrifterDirectionalFamily {
+  return captureProfile === 'armored' && armored === true
+    ? 'armored'
+    : 'ordinary';
+}
+
+/** Pure timing envelope for the authored 0.82-second capture presentation. */
+export function capturePresentationStrengths(
+  progress: number,
+  reducedFlash: boolean,
+): CapturePresentationStrengths {
+  const resolved = clamp01(progress);
+  const closureScale = reducedFlash ? 0.38 : 1;
+  const arrivalScale = reducedFlash ? 0.55 : 1;
+  const arrival = phase(resolved, 0.78, 1);
+
+  return Object.freeze({
+    closureBang:
+      (1 - smoothstep(0.012, 0.07, resolved)) * closureScale,
+    intakeTrail: windowPulse(resolved, 0.52, 0.98),
+    arrivalPulse: Math.sin(arrival * Math.PI) * arrivalScale,
+  });
+}
 
 interface EnemySpriteTuning {
   readonly anchorY: number;
@@ -185,15 +414,26 @@ export class LoopPlaygroundRenderer {
   private readonly environment = new Graphics();
   private readonly environmentAtmosphere = new Graphics();
   private readonly environmentProps = new Graphics();
+  private readonly depthLayer = new Container();
+  private readonly streetBlockGraphics: Graphics[] = [];
+  private readonly districtPropShadows = new Graphics();
+  private readonly districtPropSprites: Sprite[] = [];
   private readonly wardenUnderlay = new Graphics();
   private readonly wardenSpriteLayer = new Container();
   private readonly wardenSprite = new Sprite(Texture.EMPTY);
   private readonly wardenSpriteMask = new Graphics();
+  private readonly actorUnderlays = new Graphics();
   private readonly actors = new Graphics();
-  private readonly assetActors = new Container();
-  private readonly enemySpriteLayer = new Container();
   private readonly playerSprite = new Sprite(Texture.EMPTY);
   private readonly enemySprites: Sprite[] = [];
+  private readonly actorReflectionLayer = new Container();
+  private readonly actorShadowLayer = new Container();
+  private readonly playerReflectionSprite = new Sprite(Texture.EMPTY);
+  private readonly playerShadowSprite = new Sprite(Texture.EMPTY);
+  private readonly playerRimSprite = new Sprite(Texture.EMPTY);
+  private readonly enemyReflectionSprites: Sprite[] = [];
+  private readonly enemyShadowSprites: Sprite[] = [];
+  private readonly enemyRimSprites: Sprite[] = [];
   private readonly tetherLayer = new Container();
   private readonly capturedEchoLayer = new Container();
   private readonly capturedEchoSprites: Sprite[] = [];
@@ -211,15 +451,26 @@ export class LoopPlaygroundRenderer {
   private asphaltTexture: Texture | null = null;
   private carrierTexture: Texture | null = null;
   private carrierWalkTextures: readonly Texture[] = [];
+  private carrierDirectionalTextures: readonly Texture[] = [];
   private drifterTexture: Texture | null = null;
+  private drifterDirectionalTextures: readonly Texture[] = [];
+  private districtPropTextures: readonly Texture[] = [];
   private armoredDrifterTexture: Texture | null = null;
+  private armoredDrifterDirectionalTextures: readonly Texture[] = [];
   private armoredDrifterWalkTextures: readonly Texture[] = [];
   private readonly enemyTextures: Partial<
     Record<FullRunEnemyArchetype, Texture>
   > = {};
+  private readonly enemyDirectionalTextures: Partial<
+    Record<FullRunEnemyArchetype, readonly Texture[]>
+  > = {};
   private readonly enemyWalkTextures: Partial<
     Record<FullRunEnemyArchetype, readonly Texture[]>
   > = {};
+  private readonly enemyDirectionalStates = new Map<
+    string,
+    { frameIndex: number; lastSeenFrame: number }
+  >();
   private readonly enemyWalkStates = new Map<
     string,
     { x: number; y: number; distance: number; lastSeenFrame: number }
@@ -251,7 +502,23 @@ export class LoopPlaygroundRenderer {
       this.wardenSprite,
       this.wardenSpriteMask,
     );
-    this.assetActors.addChild(this.enemySpriteLayer, this.playerSprite);
+    this.depthLayer.sortableChildren = true;
+    this.depthLayer.addChild(this.playerSprite);
+    this.prepareGroundingSprite(this.playerReflectionSprite, 'normal');
+    this.prepareGroundingSprite(this.playerShadowSprite, 'normal');
+    this.prepareGroundingSprite(this.playerRimSprite, 'add');
+    this.actorReflectionLayer.addChild(this.playerReflectionSprite);
+    this.actorShadowLayer.addChild(this.playerShadowSprite);
+    this.depthLayer.addChild(this.playerRimSprite);
+  }
+
+  private prepareGroundingSprite(
+    sprite: Sprite,
+    blendMode: 'normal' | 'add',
+  ): void {
+    sprite.anchor.set(0.5, 0.42);
+    sprite.blendMode = blendMode;
+    sprite.visible = false;
   }
 
   public async loadAssets(): Promise<void> {
@@ -273,8 +540,12 @@ export class LoopPlaygroundRenderer {
       this.environmentProps,
       this.wardenUnderlay,
       this.wardenSpriteLayer,
+      this.actorReflectionLayer,
+      this.actorShadowLayer,
+      this.districtPropShadows,
+      this.actorUnderlays,
+      this.depthLayer,
       this.actors,
-      this.assetActors,
       this.tetherLayer,
       this.loopGraphics,
       this.capturedEchoLayer,
@@ -288,6 +559,7 @@ export class LoopPlaygroundRenderer {
       ? { ...state, elapsed: 0 }
       : state;
     this.applySceneImpact(
+      state.width,
       state.camera,
       state.closureEcho,
       state.reducedMotion,
@@ -311,6 +583,7 @@ export class LoopPlaygroundRenderer {
   }
 
   private applySceneImpact(
+    screenWidth: number,
     camera: Camera2DSnapshot,
     closureEcho: ClosureEchoView | null,
     reducedMotion: boolean,
@@ -331,9 +604,14 @@ export class LoopPlaygroundRenderer {
       offsetY = Math.cos(progress * 173 + closureEcho.captured * 2.3) * amplitude * 0.72;
     }
 
+    const cameraZoom = Math.max(
+      1,
+      screenWidth / Math.max(1, camera.viewportWidth),
+    );
+    this.worldLayer.scale.set(cameraZoom);
     this.worldLayer.position.set(
-      -camera.x + offsetX,
-      -camera.y + offsetY,
+      -camera.x * cameraZoom + offsetX,
+      -camera.y * cameraZoom + offsetY,
     );
 
     // Rain stays in screen space so world impact never turns it into a second,
@@ -345,28 +623,22 @@ export class LoopPlaygroundRenderer {
     const asphaltTile = await this.loadTextureSafely(
       ART_ASSET_URLS.asphaltTile,
     );
-    const [background, carrier, drifter, tether, carrierWalk, drifterWalk] =
+    const [background, carrierDirectional, drifterDirectional, tether] =
       await Promise.all([
-      asphaltTile === null
-        ? this.loadTextureSafely(ART_ASSET_URLS.background)
-        : Promise.resolve(null),
-      this.loadTextureSafely(ART_ASSET_URLS.carrier),
-      this.loadTextureSafely(ART_ASSET_URLS.drifter),
-      this.loadTextureSafely(ART_ASSET_URLS.tether),
-      this.loadTextureSafely(ART_ASSET_URLS.carrierWalk),
-      this.loadTextureSafely(ART_ASSET_URLS.drifterWalk),
-    ]);
+        asphaltTile === null
+          ? this.loadTextureSafely(ART_ASSET_URLS.background)
+          : Promise.resolve(null),
+        this.loadTextureSafely(ART_ASSET_URLS.carrierDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.drifterDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.tether),
+      ]);
 
     this.backgroundTexture = background;
     this.asphaltTexture = asphaltTile;
-    this.carrierTexture = carrier;
-    this.drifterTexture = drifter;
-    this.carrierWalkTextures = this.createWalkFrames(carrierWalk);
-    this.enemyWalkTextures.drifter = this.createWalkFrames(drifterWalk);
-
-    if (drifter !== null) {
-      this.enemyTextures.drifter = drifter;
-    }
+    this.carrierDirectionalTextures =
+      this.createDirectionalFrames(carrierDirectional);
+    this.drifterDirectionalTextures =
+      this.createDirectionalFrames(drifterDirectional);
 
     if (background !== null) {
       this.backgroundSprite.texture = background;
@@ -380,9 +652,6 @@ export class LoopPlaygroundRenderer {
       this.backgroundSprite.visible = false;
     }
 
-    if (carrier !== null) {
-      this.playerSprite.texture = carrier;
-    }
 
     if (tether !== null) {
       try {
@@ -405,6 +674,18 @@ export class LoopPlaygroundRenderer {
 
   private async loadDeferredAssetsSafely(): Promise<void> {
     const [
+      carrier,
+      drifter,
+      carrierWalk,
+      drifterWalk,
+      quarantineProps,
+      armoredDrifterDirectional,
+      rusherDirectional,
+      watcherDirectional,
+      cutterDirectional,
+      mimicDirectional,
+      eliteHuskDirectional,
+      wardenDirectional,
       armoredDrifter,
       rusher,
       watcher,
@@ -419,6 +700,18 @@ export class LoopPlaygroundRenderer {
       mimicWalk,
       eliteHuskWalk,
     ] = await Promise.all([
+        this.loadTextureSafely(ART_ASSET_URLS.carrier),
+        this.loadTextureSafely(ART_ASSET_URLS.drifter),
+        this.loadTextureSafely(ART_ASSET_URLS.carrierWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.drifterWalk),
+        this.loadTextureSafely(ART_ASSET_URLS.quarantineProps),
+        this.loadTextureSafely(ART_ASSET_URLS.armoredDrifterDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.rusherDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.watcherDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.cutterDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.mimicDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.eliteHuskDirectional),
+        this.loadTextureSafely(ART_ASSET_URLS.wardenDirectional),
         this.loadTextureSafely(ART_ASSET_URLS.armoredDrifter),
         this.loadTextureSafely(ART_ASSET_URLS.rusher),
         this.loadTextureSafely(ART_ASSET_URLS.watcher),
@@ -434,8 +727,36 @@ export class LoopPlaygroundRenderer {
         this.loadTextureSafely(ART_ASSET_URLS.eliteHuskWalk),
       ]);
 
+    this.carrierTexture = carrier;
+    this.drifterTexture = drifter;
+    this.carrierWalkTextures = this.createWalkFrames(carrierWalk);
+    this.enemyWalkTextures.drifter = this.createWalkFrames(drifterWalk);
+    if (carrier !== null && this.carrierDirectionalTextures.length === 0) {
+      this.playerSprite.texture = carrier;
+    }
+    if (drifter !== null) {
+      this.enemyTextures.drifter = drifter;
+    }
+
+    this.districtPropTextures =
+      this.createGridFrames(quarantineProps, 4, 1);
+    this.syncDistrictPropSprites();
     this.armoredDrifterTexture = armoredDrifter;
-    this.wardenTexture = warden;
+    this.armoredDrifterDirectionalTextures =
+      this.createDirectionalFrames(armoredDrifterDirectional);
+    this.enemyDirectionalTextures.rusher =
+      this.createDirectionalFrames(rusherDirectional);
+    this.enemyDirectionalTextures.watcher =
+      this.createDirectionalFrames(watcherDirectional);
+    this.enemyDirectionalTextures.cutter =
+      this.createDirectionalFrames(cutterDirectional);
+    this.enemyDirectionalTextures.mimic =
+      this.createDirectionalFrames(mimicDirectional);
+    this.enemyDirectionalTextures['elite-husk'] =
+      this.createDirectionalFrames(eliteHuskDirectional);
+    const wardenDirectionalTextures =
+      this.createDirectionalFrames(wardenDirectional);
+    this.wardenTexture = wardenDirectionalTextures[4] ?? warden;
     this.armoredDrifterWalkTextures =
       this.createWalkFrames(armoredDrifterWalk);
     this.enemyWalkTextures.rusher = this.createWalkFrames(rusherWalk);
@@ -460,8 +781,8 @@ export class LoopPlaygroundRenderer {
     if (eliteHusk !== null) {
       this.enemyTextures['elite-husk'] = eliteHusk;
     }
-    if (warden !== null) {
-      this.wardenSprite.texture = warden;
+    if (this.wardenTexture !== null) {
+      this.wardenSprite.texture = this.wardenTexture;
     }
   }
 
@@ -527,7 +848,7 @@ export class LoopPlaygroundRenderer {
       this.backgroundSprite.visible = false;
       graphics.rect(minX, minY, width, height).fill({
         color: GAMEPLAY_COLORS.asphalt,
-        alpha: 0.18,
+        alpha: 0.29,
       });
     } else if (this.backgroundTexture !== null) {
       const coverScale = Math.max(
@@ -560,8 +881,10 @@ export class LoopPlaygroundRenderer {
     this.drawPuddleBodies(graphics);
     this.drawRoadCracks(graphics, width, height, edge);
     this.drawCrossingMarks(graphics);
+    this.drawGroundLighting(graphics, minX, minY, width, height);
     this.drawEdgeBiomass(props);
     this.drawDistrictVents(props);
+    this.drawStreetBlocks();
     this.drawBarricades(props, width, height);
 
     graphics
@@ -574,6 +897,7 @@ export class LoopPlaygroundRenderer {
   }
 
   private drawActors(state: PlaygroundRenderState): void {
+    const underlays = this.actorUnderlays.clear();
     const graphics = this.actors.clear();
     const playerFacing = this.playerFacingAngle(state);
     let visibleEnemySpriteCount = 0;
@@ -595,10 +919,11 @@ export class LoopPlaygroundRenderer {
       this.drawEnemyTelegraph(graphics, enemy, state.elapsed);
       const walk = this.enemyWalkSample(enemy);
       const texture =
+        this.directionalEnemyTexture(enemy) ??
         this.enemyWalkTexturesFor(enemy)[walk.frame] ??
         this.enemyTextureFor(enemy);
       if (texture !== null) {
-        this.drawDrifterSpriteUnderlay(graphics, enemy, walk);
+        this.drawDrifterSpriteUnderlay(underlays, enemy, walk);
         const sprite = this.ensureEnemySprite(visibleEnemySpriteCount);
         this.updateEnemySprite(
           sprite,
@@ -608,6 +933,34 @@ export class LoopPlaygroundRenderer {
           state.elapsed,
           walk,
         );
+        this.syncActorGrounding(
+          sprite,
+          this.ensureGroundingSprite(
+            this.enemyReflectionSprites,
+            this.actorReflectionLayer,
+            visibleEnemySpriteCount,
+            'normal',
+          ),
+          this.ensureGroundingSprite(
+            this.enemyShadowSprites,
+            this.actorShadowLayer,
+            visibleEnemySpriteCount,
+            'normal',
+          ),
+          this.ensureGroundingSprite(
+            this.enemyRimSprites,
+            this.depthLayer,
+            visibleEnemySpriteCount,
+            'add',
+          ),
+          enemy.radius,
+          state.elapsed,
+          enemy.phase,
+          state.reducedMotion,
+        );
+        sprite.zIndex = actorDepthKey(enemy.position.y);
+        this.enemyRimSprites[visibleEnemySpriteCount]!.zIndex =
+          actorDepthKey(enemy.position.y) + 0.01;
         visibleEnemySpriteCount += 1;
       } else {
         this.drawDrifter(graphics, enemy, state.player, state.elapsed);
@@ -619,6 +972,11 @@ export class LoopPlaygroundRenderer {
         this.enemyWalkStates.delete(id);
       }
     }
+    for (const [id, directionalState] of this.enemyDirectionalStates) {
+      if (directionalState.lastSeenFrame !== this.actorRenderFrame) {
+        this.enemyDirectionalStates.delete(id);
+      }
+    }
 
     this.drawProjectiles(graphics, state.projectiles, state.elapsed);
 
@@ -628,15 +986,32 @@ export class LoopPlaygroundRenderer {
       index += 1
     ) {
       this.enemySprites[index]!.visible = false;
+      this.hideActorGrounding(index);
     }
 
-    if (this.carrierTexture !== null) {
-      this.drawCarrierSpriteUnderlay(graphics, state.player);
+    if (
+      this.carrierTexture !== null ||
+      this.carrierDirectionalTextures.length > 0
+    ) {
+      this.drawCarrierSpriteUnderlay(underlays, state.player);
       this.updateCarrierSprite(state, playerFacing);
     } else {
       this.playerSprite.visible = false;
       this.drawCarrier(graphics, state);
     }
+
+    this.syncActorGrounding(
+      this.playerSprite,
+      this.playerReflectionSprite,
+      this.playerShadowSprite,
+      this.playerRimSprite,
+      PLAYGROUND_TUNING.playerRadius,
+      state.elapsed,
+      0,
+      state.reducedMotion,
+    );
+    this.playerSprite.zIndex = actorDepthKey(state.player.y);
+    this.playerRimSprite.zIndex = actorDepthKey(state.player.y) + 0.01;
 
     if (state.playerInvulnerability > 0) {
       const hitPulse = state.reducedFlash
@@ -684,53 +1059,82 @@ export class LoopPlaygroundRenderer {
       warden.stage === 'defeated'
         ? Math.max(0.16, warden.collapseRemaining / 1.4)
         : 0.35 + arrivalProgress * 0.65;
-    const bodyRadius = 58 * Math.max(0.35, arrivalProgress) * collapseScale;
+    const bodyRadius =
+      WARDEN_PRESENTATION_RADIUS *
+      Math.max(0.35, arrivalProgress) *
+      collapseScale;
     const pulse = 1 + Math.sin(elapsed * 3.2 + warden.phase) * 0.025;
+    const presentation = wardenStagePresentation(warden.stage, false);
 
     underlay
       .ellipse(
         warden.center.x,
-        warden.center.y + bodyRadius * 0.76,
-        bodyRadius * 1.55,
-        bodyRadius * 0.58,
+        warden.center.y + bodyRadius * 0.74,
+        bodyRadius * 1.76,
+        bodyRadius * 0.52,
       )
-      .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.72 });
+      .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.42 });
     underlay
-      .circle(warden.center.x, warden.center.y, bodyRadius * 1.48)
+      .ellipse(
+        warden.center.x + bodyRadius * 0.08,
+        warden.center.y + bodyRadius * 0.68,
+        bodyRadius * 1.38,
+        bodyRadius * 0.34,
+      )
+      .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.82 });
+    underlay
+      .ellipse(
+        warden.center.x + bodyRadius * 0.18,
+        warden.center.y + bodyRadius * 1.02,
+        bodyRadius * 1.18,
+        bodyRadius * 0.2,
+      )
       .fill({
-        color:
-          warden.stage === 'core'
-            ? GAMEPLAY_COLORS.arterial
-            : GAMEPLAY_COLORS.hostileCyan,
-        alpha: alpha * 0.055,
+        color: presentation.seamColor,
+        alpha: alpha * presentation.emissiveAlpha * 0.22,
       });
+    this.strokeProjectedArc(
+      underlay,
+      {
+        center: {
+          x: warden.center.x + bodyRadius * 0.18,
+          y: warden.center.y + bodyRadius * 0.98,
+        },
+        radiusX: bodyRadius * 0.92,
+        radiusY: bodyRadius * 0.13,
+        startAngle: Math.PI * 0.08,
+        endAngle: Math.PI * 0.9,
+        segments: 14,
+      },
+      GAMEPLAY_COLORS.rain,
+      2,
+      alpha * 0.16,
+    );
 
-    // The source render includes wide claws. The mask keeps its dense central
-    // anatomy while procedural objective arms remain the authoritative targets.
+    // Keep the bitmap as dense anatomical material, while the procedural
+    // silhouette carries volume, lighting, and authoritative weak points.
     this.wardenSpriteMask
       .ellipse(
         warden.center.x,
-        warden.center.y - bodyRadius * 0.04,
-        bodyRadius * 1.46,
-        bodyRadius * 1.18,
+        warden.center.y - bodyRadius * 0.1,
+        bodyRadius * 1.52,
+        bodyRadius * 1.08,
       )
       .fill(0xffffff);
 
-    const baseScale =
-      (bodyRadius * 3.55) / this.wardenTexture.width;
+    const baseScale = (bodyRadius * 3.7) / this.wardenTexture.width;
     this.wardenSprite.texture = this.wardenTexture;
-    this.wardenSprite.position.set(warden.center.x, warden.center.y);
-    this.wardenSprite.rotation = Math.sin(elapsed * 1.7 + warden.phase) * 0.008;
-    this.wardenSprite.scale.set(baseScale * pulse);
-    this.wardenSprite.alpha = alpha * 0.96;
-    this.wardenSprite.tint =
-      warden.stage === 'defeated'
-        ? 0xb9655e
-        : warden.stage === 'core'
-          ? 0xffc6b5
-          : warden.stage === 'arrival'
-            ? 0xabb5b4
-            : 0xffffff;
+    this.wardenSprite.position.set(
+      warden.center.x,
+      warden.center.y - bodyRadius * 0.06,
+    );
+    this.wardenSprite.rotation = 0;
+    this.wardenSprite.scale.set(
+      baseScale * pulse,
+      baseScale * (1 + (pulse - 1) * 0.38),
+    );
+    this.wardenSprite.alpha = alpha * 0.92;
+    this.wardenSprite.tint = presentation.bodyTint;
     this.wardenSprite.visible = true;
   }
 
@@ -761,8 +1165,15 @@ export class LoopPlaygroundRenderer {
       warden.stage === 'defeated'
         ? Math.max(0.16, warden.collapseRemaining / 1.4)
         : 0.35 + arrivalProgress * 0.65;
-    const bodyRadius = 58 * Math.max(0.35, arrivalProgress) * collapseScale;
+    const bodyRadius =
+      WARDEN_PRESENTATION_RADIUS *
+      Math.max(0.35, arrivalProgress) *
+      collapseScale;
     const pulse = 1 + Math.sin(elapsed * 3.2 + warden.phase) * 0.045;
+    const presentation = wardenStagePresentation(
+      warden.stage,
+      reducedFlash,
+    );
     const lockedLashStart =
       attackEcho?.kind === 'lash' &&
       attackEcho.geometry.kind === 'corridor' &&
@@ -791,61 +1202,102 @@ export class LoopPlaygroundRenderer {
       graphics
         .moveTo(warden.center.x, warden.center.y)
         .quadraticCurveTo(mid.x, mid.y, armPosition.x, armPosition.y)
-        .stroke({ color: GAMEPLAY_COLORS.void, width: 22, alpha: alpha * 0.9 });
+        .stroke({ color: GAMEPLAY_COLORS.void, width: 26, alpha: alpha * 0.9 });
       graphics
         .moveTo(warden.center.x, warden.center.y)
         .quadraticCurveTo(mid.x, mid.y, armPosition.x, armPosition.y)
         .stroke({
-          color: GAMEPLAY_COLORS.arterial,
-          width: 10,
-          alpha: alpha * 0.78,
+          color: GAMEPLAY_COLORS.tendon,
+          width: 14,
+          alpha: alpha * 0.84,
         });
       graphics
-        .circle(armPosition.x, armPosition.y, arm.radius * 1.12)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.92 })
+        .moveTo(warden.center.x, warden.center.y)
+        .quadraticCurveTo(mid.x, mid.y, armPosition.x, armPosition.y)
         .stroke({
-          color: GAMEPLAY_COLORS.bone,
+          color: presentation.seamColor,
           width: 4,
-          alpha: alpha * 0.86,
+          alpha: alpha * 0.68,
         });
       const angle = Math.atan2(
         armPosition.y - warden.center.y,
         armPosition.x - warden.center.x,
       );
-      for (const offset of [-0.34, 0, 0.34]) {
-        this.drawShard(
-          graphics,
-          armPosition,
-          angle + offset,
-          arm.radius * 1.45,
-          4.5,
-          GAMEPLAY_COLORS.bone,
-          alpha * 0.9,
-        );
-      }
+      graphics
+        .ellipse(
+          armPosition.x,
+          armPosition.y + arm.radius * 0.18,
+          arm.radius * 1.28,
+          arm.radius * 0.78,
+        )
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.9 });
+      this.strokeProjectedArc(
+        graphics,
+        {
+          center: armPosition,
+          radiusX: arm.radius * 1.24,
+          radiusY: arm.radius * 0.72,
+          startAngle: Math.PI * 0.92,
+          endAngle: Math.PI * 1.72,
+          rotation: angle,
+          segments: 8,
+        },
+        GAMEPLAY_COLORS.bone,
+        4.5,
+        alpha * 0.78,
+      );
+      this.strokeProjectedArc(
+        graphics,
+        {
+          center: armPosition,
+          radiusX: arm.radius * 1.24,
+          radiusY: arm.radius * 0.72,
+          startAngle: Math.PI * 1.82,
+          endAngle: Math.PI * 2.42,
+          rotation: angle,
+          segments: 7,
+        },
+        GAMEPLAY_COLORS.tendon,
+        4,
+        alpha * 0.8,
+      );
+      graphics
+        .circle(armPosition.x, armPosition.y, arm.radius * 0.34)
+        .fill({
+          color: presentation.targetColor,
+          alpha: alpha * presentation.emissiveAlpha * 1.9,
+        })
+        .stroke({
+          color: GAMEPLAY_COLORS.bone,
+          width: 2,
+          alpha: alpha * 0.76,
+        });
+      const seamLength = arm.radius * 0.82;
+      graphics
+        .moveTo(
+          armPosition.x - Math.cos(angle) * seamLength,
+          armPosition.y - Math.sin(angle) * seamLength,
+        )
+        .lineTo(
+          armPosition.x + Math.cos(angle) * seamLength,
+          armPosition.y + Math.sin(angle) * seamLength,
+        )
+        .stroke({
+          color: presentation.seamColor,
+          width: 2.5,
+          alpha: alpha * 0.74,
+        });
     }
 
-    if (usingBitmap) {
-      graphics
-        .circle(warden.center.x, warden.center.y, bodyRadius * pulse)
-        .stroke({
-          color: GAMEPLAY_COLORS.arterial,
-          width: 4,
-          alpha: alpha * 0.42,
-        });
-    } else {
-      graphics
-        .circle(warden.center.x, warden.center.y, bodyRadius * 1.18)
-        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.92 });
-      graphics
-        .circle(warden.center.x, warden.center.y, bodyRadius * pulse)
-        .fill({ color: 0x171014, alpha })
-        .stroke({
-          color: GAMEPLAY_COLORS.arterial,
-          width: 8,
-          alpha: alpha * 0.7,
-        });
-    }
+    this.drawWardenAnatomy(
+      graphics,
+      warden.center,
+      bodyRadius,
+      pulse,
+      alpha,
+      presentation,
+      usingBitmap,
+    );
 
     for (const plate of warden.shellPlates) {
       if (warden.stage === 'arrival') {
@@ -854,61 +1306,149 @@ export class LoopPlaygroundRenderer {
       const side = plate.index === 0 ? -1 : 1;
       const plateX = warden.center.x + side * bodyRadius * 0.52;
       if (!plate.intact) {
-        if (usingBitmap) {
+        graphics
+          .ellipse(
+            plateX,
+            warden.center.y + bodyRadius * 0.08,
+            bodyRadius * 0.34,
+            bodyRadius * 0.54,
+          )
+          .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.54 });
+        for (let scarIndex = -1; scarIndex <= 1; scarIndex += 1) {
           graphics
-            .ellipse(
-              plateX,
-              warden.center.y,
-              bodyRadius * 0.42,
-              bodyRadius * 0.75,
+            .moveTo(plateX, warden.center.y + scarIndex * bodyRadius * 0.22)
+            .lineTo(
+              plateX + side * bodyRadius * 0.28,
+              warden.center.y + scarIndex * bodyRadius * 0.16,
             )
-            .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.58 })
             .stroke({
-              color: GAMEPLAY_COLORS.arterial,
-              width: 5,
-              alpha: alpha * 0.52,
+              color: presentation.seamColor,
+              width: 1.8,
+              alpha: alpha * 0.46,
             });
-          for (let scarIndex = -1; scarIndex <= 1; scarIndex += 1) {
-            graphics
-              .moveTo(plateX, warden.center.y + scarIndex * bodyRadius * 0.3)
-              .lineTo(
-                plateX + side * bodyRadius * 0.34,
-                warden.center.y + scarIndex * bodyRadius * 0.22,
-              )
-              .stroke({
-                color: GAMEPLAY_COLORS.arterialBright,
-                width: 1.5,
-                alpha: alpha * 0.42,
-              });
-          }
         }
         continue;
       }
+
       graphics
         .ellipse(
-          plateX,
+          plateX + side * bodyRadius * 0.04,
+          warden.center.y + bodyRadius * 0.08,
+          bodyRadius * 0.4,
+          bodyRadius * 0.66,
+        )
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.36 });
+      const plateSegments =
+        side < 0
+          ? [
+              [Math.PI * 0.62, Math.PI * 0.92],
+              [Math.PI * 1.08, Math.PI * 1.38],
+            ]
+          : [
+              [Math.PI * 0.08, Math.PI * 0.38],
+              [Math.PI * 1.62, Math.PI * 1.92],
+            ];
+      for (const [startAngle, endAngle] of plateSegments) {
+        this.strokeProjectedArc(
+          graphics,
+          {
+            center: { x: plateX, y: warden.center.y },
+            radiusX: bodyRadius * 0.42,
+            radiusY: bodyRadius * 0.68,
+            startAngle: startAngle!,
+            endAngle: endAngle!,
+            segments: 6,
+          },
+          GAMEPLAY_COLORS.bone,
+          6,
+          alpha * 0.7,
+        );
+      }
+      this.strokeProjectedArc(
+        graphics,
+        {
+          center: {
+            x: plateX - bodyRadius * 0.06,
+            y: warden.center.y - bodyRadius * 0.04,
+          },
+          radiusX: bodyRadius * 0.32,
+          radiusY: bodyRadius * 0.56,
+          startAngle: Math.PI * 1.04,
+          endAngle: Math.PI * 1.28,
+          segments: 5,
+        },
+        side < 0 ? GAMEPLAY_COLORS.bone : GAMEPLAY_COLORS.tendon,
+        side < 0 ? 3.5 : 2.8,
+        alpha * (side < 0 ? 0.66 : 0.52),
+      );
+      graphics
+        .moveTo(
+          plateX - side * bodyRadius * 0.08,
+          warden.center.y - bodyRadius * 0.48,
+        )
+        .quadraticCurveTo(
+          plateX + side * bodyRadius * 0.12,
           warden.center.y,
-          bodyRadius * 0.46,
-          bodyRadius * 0.82,
+          plateX - side * bodyRadius * 0.02,
+          warden.center.y + bodyRadius * 0.5,
         )
         .stroke({
-          color: GAMEPLAY_COLORS.bone,
-          width: 9,
-          alpha: alpha * 0.72,
+          color: presentation.seamColor,
+          width: warden.stage === 'shell' ? 3 : 1.8,
+          alpha: alpha * (warden.stage === 'shell' ? 0.72 : 0.42),
         });
+      if (warden.stage === 'shell') {
+        graphics
+          .circle(
+            plateX - side * bodyRadius * 0.02,
+            warden.center.y + bodyRadius * 0.12,
+            4.5,
+          )
+          .fill({
+            color: presentation.targetColor,
+            alpha: alpha * presentation.emissiveAlpha * 1.6,
+          })
+          .stroke({
+            color: GAMEPLAY_COLORS.bone,
+            width: 1.5,
+            alpha: alpha * 0.72,
+          });
+      }
     }
 
     if (warden.stage === 'core' || warden.stage === 'defeated') {
       const corePulse = 0.82 + Math.sin(elapsed * 9) * 0.18;
       graphics
+        .ellipse(
+          warden.core.position.x,
+          warden.core.position.y + warden.core.radius * 0.16,
+          warden.core.radius * 1.38,
+          warden.core.radius * 0.86,
+        )
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.76 });
+      this.strokeProjectedArc(
+        graphics,
+        {
+          center: warden.core.position,
+          radiusX: warden.core.radius * 1.38,
+          radiusY: warden.core.radius * 0.84,
+          startAngle: Math.PI * 1.02,
+          endAngle: Math.PI * 1.92,
+          segments: 10,
+        },
+        GAMEPLAY_COLORS.bone,
+        4,
+        alpha * 0.76,
+      );
+      graphics
         .circle(
           warden.core.position.x,
           warden.core.position.y,
-          Math.max(5, warden.core.radius * corePulse),
+          Math.max(5, warden.core.radius * corePulse * 0.72),
         )
         .fill({
           color: GAMEPLAY_COLORS.arterialBright,
-          alpha: alpha * 0.9,
+          alpha: alpha * (reducedFlash ? 0.58 : 0.82),
         });
       const activeNodes = warden.controlNodes.filter((node) => node.active);
       if (activeNodes.length === 2) {
@@ -919,8 +1459,8 @@ export class LoopPlaygroundRenderer {
           .closePath()
           .stroke({
             color: GAMEPLAY_COLORS.hostileCyan,
-            width: 2,
-            alpha: alpha * 0.5,
+            width: 2.5,
+            alpha: alpha * 0.62,
           });
       }
       for (const node of activeNodes) {
@@ -932,45 +1472,140 @@ export class LoopPlaygroundRenderer {
           )
           .fill({
             color: GAMEPLAY_COLORS.hostileCyan,
-            alpha: alpha * 0.78,
+            alpha: alpha * (reducedFlash ? 0.58 : 0.78),
           })
           .stroke({
             color: GAMEPLAY_COLORS.bone,
-            width: 2,
+            width: 3,
             alpha: alpha * 0.82,
           });
+        this.strokeProjectedArc(
+          graphics,
+          {
+            center: node.position,
+            radiusX: node.radius * 1.45,
+            radiusY: node.radius * 0.82,
+            startAngle: Math.PI * 0.96,
+            endAngle: Math.PI * 1.84,
+            segments: 7,
+          },
+          GAMEPLAY_COLORS.bone,
+          2,
+          alpha * 0.68,
+        );
       }
     }
 
     const attack = warden.attack;
     if (attack?.state === 'telegraph' && attack.lockedGeometry !== null) {
-      const telegraphPulse = 0.42 + Math.sin(elapsed * 18) * 0.24;
+      const telegraphPulse = reducedFlash
+        ? 0.24 + Math.sin(elapsed * 10) * 0.05
+        : 0.38 + Math.sin(elapsed * 14) * 0.12;
       const geometry = attack.lockedGeometry;
       if (geometry.kind === 'corridor') {
         graphics
           .moveTo(geometry.start.x, geometry.start.y)
           .lineTo(geometry.end.x, geometry.end.y)
           .stroke({
-            color: GAMEPLAY_COLORS.amber,
-            width: geometry.halfWidth * 2,
-            alpha: telegraphPulse * 0.28,
+            color: presentation.telegraphColor,
+            width: geometry.halfWidth * 1.2,
+            alpha: telegraphPulse * 0.24,
           });
+        const directionX = geometry.end.x - geometry.start.x;
+        const directionY = geometry.end.y - geometry.start.y;
+        const directionLength = Math.max(
+          0.001,
+          Math.hypot(directionX, directionY),
+        );
+        const normalX = (-directionY / directionLength) * geometry.halfWidth;
+        const normalY = (directionX / directionLength) * geometry.halfWidth;
+        for (const side of [-1, 1]) {
+          graphics
+            .moveTo(
+              geometry.start.x + normalX * side,
+              geometry.start.y + normalY * side,
+            )
+            .lineTo(
+              geometry.end.x + normalX * side,
+              geometry.end.y + normalY * side,
+            )
+            .stroke({
+              color: presentation.telegraphColor,
+              width: 2.5,
+              alpha: telegraphPulse * 0.88,
+            });
+        }
         graphics
           .moveTo(geometry.start.x, geometry.start.y)
           .lineTo(geometry.end.x, geometry.end.y)
           .stroke({
             color: GAMEPLAY_COLORS.bone,
-            width: 2,
-            alpha: telegraphPulse * 0.9,
+            width: 1.5,
+            alpha: telegraphPulse * 0.68,
           });
       } else {
-        graphics
-          .circle(geometry.center.x, geometry.center.y, geometry.radius)
-          .stroke({
-            color: GAMEPLAY_COLORS.amber,
-            width: geometry.halfWidth * 2,
-            alpha: telegraphPulse * 0.34,
-          });
+        const dashCount = 12;
+        for (let index = 0; index < dashCount; index += 1) {
+          const startAngle =
+            (index / dashCount) * Math.PI * 2 + Math.PI * 0.018;
+          const endAngle =
+            ((index + 0.66) / dashCount) * Math.PI * 2;
+          this.strokeProjectedArc(
+            graphics,
+            {
+              center: geometry.center,
+              radiusX: geometry.radius,
+              radiusY: geometry.radius,
+              startAngle,
+              endAngle,
+              segments: 4,
+            },
+            presentation.telegraphColor,
+            7,
+            telegraphPulse * 0.78,
+          );
+          if (index % 2 === 0) {
+            for (const boundary of [-1, 1]) {
+              this.strokeProjectedArc(
+                graphics,
+                {
+                  center: geometry.center,
+                  radiusX:
+                    geometry.radius + geometry.halfWidth * boundary,
+                  radiusY:
+                    geometry.radius + geometry.halfWidth * boundary,
+                  startAngle,
+                  endAngle,
+                  segments: 4,
+                },
+                boundary < 0
+                  ? GAMEPLAY_COLORS.bone
+                  : presentation.telegraphColor,
+                1.5,
+                telegraphPulse * 0.55,
+              );
+            }
+          }
+        }
+        for (let index = 0; index < 4; index += 1) {
+          const angle = index * Math.PI * 0.5;
+          const innerRadius = geometry.radius - geometry.halfWidth * 1.45;
+          const outerRadius = geometry.radius - geometry.halfWidth * 0.25;
+          graphics
+            .moveTo(
+              geometry.center.x + Math.cos(angle) * innerRadius,
+              geometry.center.y + Math.sin(angle) * innerRadius,
+            )
+            .lineTo(
+              geometry.center.x + Math.cos(angle) * outerRadius,
+              geometry.center.y + Math.sin(angle) * outerRadius,
+            )
+            .stroke({
+              color: presentation.telegraphColor,
+              width: 3,
+              alpha: telegraphPulse * 0.7,
+            });
+        }
       }
     }
 
@@ -1031,36 +1666,254 @@ export class LoopPlaygroundRenderer {
         geometry.kind === 'ring'
       ) {
         const ringFlash = Math.max(0, 1 - progress * 2.1) * flashScale;
-        for (let index = 0; index < 3; index += 1) {
-          const offset = (index - 1) * (5 + progress * 16);
-          graphics
-            .circle(
-              geometry.center.x,
-              geometry.center.y,
-              Math.max(1, geometry.radius + offset),
-            )
-            .stroke({
-              color:
-                index === 1
-                  ? GAMEPLAY_COLORS.arterialBright
-                  : GAMEPLAY_COLORS.bone,
-              width:
-                index === 1
-                  ? geometry.halfWidth * (1.5 + ringFlash)
-                  : Math.max(1, geometry.halfWidth * 0.18),
-              alpha:
-                strike *
-                (index === 1
-                  ? reducedFlash
-                    ? 0.42
-                    : 0.72
-                  : reducedFlash
-                    ? 0.28
-                    : 0.48),
-            });
+        const dashCount = 14;
+        for (let index = 0; index < dashCount; index += 1) {
+          const startAngle =
+            (index / dashCount) * Math.PI * 2 + progress * 0.12;
+          const endAngle =
+            ((index + 0.62) / dashCount) * Math.PI * 2 + progress * 0.12;
+          const offset =
+            (index % 2 === 0 ? -1 : 1) * progress * geometry.halfWidth;
+          this.strokeProjectedArc(
+            graphics,
+            {
+              center: geometry.center,
+              radiusX: Math.max(1, geometry.radius + offset),
+              radiusY: Math.max(1, geometry.radius + offset),
+              startAngle,
+              endAngle,
+              segments: 4,
+            },
+            index % 3 === 0
+              ? GAMEPLAY_COLORS.bone
+              : GAMEPLAY_COLORS.arterialBright,
+            index % 3 === 0
+              ? 2.5
+              : Math.max(4, geometry.halfWidth * (0.34 + ringFlash * 0.24)),
+            strike *
+              (index % 3 === 0
+                ? reducedFlash
+                  ? 0.24
+                  : 0.44
+                : reducedFlash
+                  ? 0.34
+                  : 0.62),
+          );
         }
       }
     }
+  }
+
+  private drawWardenAnatomy(
+    graphics: Graphics,
+    center: Vec2,
+    radius: number,
+    pulse: number,
+    alpha: number,
+    presentation: WardenStagePresentation,
+    usingBitmap: boolean,
+  ): void {
+    const resolvedRadius = radius * pulse;
+
+    if (!usingBitmap) {
+      graphics
+        .ellipse(
+          center.x,
+          center.y + resolvedRadius * 0.08,
+          resolvedRadius * 1.4,
+          resolvedRadius * 0.9,
+        )
+        .fill({ color: GAMEPLAY_COLORS.void, alpha: alpha * 0.94 });
+      graphics
+        .ellipse(
+          center.x - resolvedRadius * 0.14,
+          center.y - resolvedRadius * 0.12,
+          resolvedRadius * 1.08,
+          resolvedRadius * 0.68,
+        )
+        .fill({ color: 0x171014, alpha: alpha * 0.9 });
+    }
+
+    // The low front lip and high back ribs establish a projected volume,
+    // rather than an icon-like circle around the source bitmap.
+    this.strokeProjectedArc(
+      graphics,
+      {
+        center: { x: center.x, y: center.y + resolvedRadius * 0.08 },
+        radiusX: resolvedRadius * 1.42,
+        radiusY: resolvedRadius * 0.88,
+        startAngle: Math.PI * 0.08,
+        endAngle: Math.PI * 0.92,
+        segments: 18,
+      },
+      GAMEPLAY_COLORS.void,
+      12,
+      alpha * 0.78,
+    );
+    this.strokeProjectedArc(
+      graphics,
+      {
+        center: { x: center.x, y: center.y + resolvedRadius * 0.04 },
+        radiusX: resolvedRadius * 1.36,
+        radiusY: resolvedRadius * 0.82,
+        startAngle: Math.PI * 0.12,
+        endAngle: Math.PI * 0.38,
+        segments: 7,
+      },
+      presentation.seamColor,
+      3,
+      alpha * 0.62,
+    );
+    this.strokeProjectedArc(
+      graphics,
+      {
+        center: { x: center.x, y: center.y + resolvedRadius * 0.04 },
+        radiusX: resolvedRadius * 1.36,
+        radiusY: resolvedRadius * 0.82,
+        startAngle: Math.PI * 0.62,
+        endAngle: Math.PI * 0.88,
+        segments: 7,
+      },
+      presentation.seamColor,
+      3,
+      alpha * 0.62,
+    );
+
+    for (let ribIndex = 0; ribIndex < 4; ribIndex += 1) {
+      const ribScale = 0.62 + ribIndex * 0.2;
+      for (const side of [-1, 1]) {
+        const startAngle =
+          side < 0
+            ? Math.PI * (1.06 + ribIndex * 0.012)
+            : Math.PI * (1.68 + ribIndex * 0.008);
+        const endAngle =
+          side < 0
+            ? Math.PI * (1.3 + ribIndex * 0.008)
+            : Math.PI * (1.9 - ribIndex * 0.018);
+        this.strokeProjectedArc(
+          graphics,
+          {
+            center: {
+              x: center.x - resolvedRadius * 0.08,
+              y:
+                center.y +
+                resolvedRadius * (0.07 - ribIndex * 0.025),
+            },
+            radiusX: resolvedRadius * ribScale,
+            radiusY: resolvedRadius * (0.34 + ribIndex * 0.11),
+            startAngle,
+            endAngle,
+            segments: 5,
+          },
+          ribIndex < 2 ? GAMEPLAY_COLORS.tendon : GAMEPLAY_COLORS.bone,
+          ribIndex < 2 ? 3 : 4,
+          alpha * (0.46 + ribIndex * 0.045),
+        );
+      }
+    }
+
+    // Fixed upper-left key light: independent of phase/facing.
+    this.strokeProjectedArc(
+      graphics,
+      {
+        center: {
+          x: center.x - resolvedRadius * 0.08,
+          y: center.y - resolvedRadius * 0.04,
+        },
+        radiusX: resolvedRadius * 1.25,
+        radiusY: resolvedRadius * 0.76,
+        startAngle: Math.PI * 1.03,
+        endAngle: Math.PI * 1.48,
+        segments: 10,
+      },
+      GAMEPLAY_COLORS.bone,
+      5.5,
+      alpha * 0.62,
+    );
+    this.strokeProjectedArc(
+      graphics,
+      {
+        center: {
+          x: center.x + resolvedRadius * 0.05,
+          y: center.y + resolvedRadius * 0.02,
+        },
+        radiusX: resolvedRadius * 1.31,
+        radiusY: resolvedRadius * 0.79,
+        startAngle: Math.PI * 1.58,
+        endAngle: Math.PI * 1.94,
+        segments: 8,
+      },
+      GAMEPLAY_COLORS.tendon,
+      4,
+      alpha * 0.5,
+    );
+
+    graphics
+      .moveTo(
+        center.x - resolvedRadius * 0.08,
+        center.y - resolvedRadius * 0.72,
+      )
+      .quadraticCurveTo(
+        center.x + resolvedRadius * 0.12,
+        center.y - resolvedRadius * 0.06,
+        center.x - resolvedRadius * 0.02,
+        center.y + resolvedRadius * 0.66,
+      )
+      .stroke({
+        color: presentation.seamColor,
+        width: 3,
+        alpha: alpha * 0.66,
+      });
+    for (const side of [-1, 1]) {
+      graphics
+        .moveTo(
+          center.x - resolvedRadius * 0.02,
+          center.y - resolvedRadius * 0.06,
+        )
+        .quadraticCurveTo(
+          center.x + side * resolvedRadius * 0.44,
+          center.y + resolvedRadius * 0.08,
+          center.x + side * resolvedRadius * 0.74,
+          center.y + resolvedRadius * 0.38,
+        )
+        .stroke({
+          color: presentation.seamColor,
+          width: 1.6,
+          alpha: alpha * 0.42,
+        });
+    }
+
+    graphics
+      .ellipse(
+        center.x - resolvedRadius * 0.38,
+        center.y - resolvedRadius * 0.32,
+        resolvedRadius * 0.38,
+        resolvedRadius * 0.18,
+      )
+      .fill({
+        color: GAMEPLAY_COLORS.bone,
+        alpha: alpha * presentation.emissiveAlpha * 0.22,
+      });
+  }
+
+  private strokeProjectedArc(
+    graphics: Graphics,
+    arc: ProjectedEllipseArc,
+    color: number,
+    width: number,
+    alpha: number,
+  ): void {
+    const points = sampleProjectedEllipseArc(arc);
+    const first = points[0];
+    if (first === undefined) {
+      return;
+    }
+    graphics.moveTo(first.x, first.y);
+    for (let index = 1; index < points.length; index += 1) {
+      const point = points[index]!;
+      graphics.lineTo(point.x, point.y);
+    }
+    graphics.stroke({ color, width, alpha });
   }
 
   private ensureEnemySprite(index: number): Sprite {
@@ -1073,8 +1926,113 @@ export class LoopPlaygroundRenderer {
     sprite.anchor.set(0.5, 0.44);
     sprite.visible = false;
     this.enemySprites.push(sprite);
-    this.enemySpriteLayer.addChild(sprite);
+    this.depthLayer.addChild(sprite);
     return sprite;
+  }
+
+  private ensureGroundingSprite(
+    pool: Sprite[],
+    layer: Container,
+    index: number,
+    blendMode: 'normal' | 'add',
+  ): Sprite {
+    const existing = pool[index];
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const sprite = new Sprite(Texture.EMPTY);
+    this.prepareGroundingSprite(sprite, blendMode);
+    pool.push(sprite);
+    layer.addChild(sprite);
+    return sprite;
+  }
+
+  /**
+   * Mirrors one actor sprite into its world-fixed cast shadow, wet reflection,
+   * and key-light rim. The companions copy the actor's texture, rotation, and
+   * deformation so gait, stagger, and closure kicks stay in sync; only the
+   * lighting offsets stay screen-fixed while the sprite rotates.
+   */
+  private syncActorGrounding(
+    base: Sprite,
+    reflection: Sprite,
+    shadow: Sprite,
+    rim: Sprite,
+    radius: number,
+    elapsed: number,
+    phase: number,
+    reducedMotion: boolean,
+    strength = 1,
+  ): void {
+    if (!base.visible) {
+      reflection.visible = false;
+      shadow.visible = false;
+      rim.visible = false;
+      return;
+    }
+
+    const scale = { x: base.scale.x, y: base.scale.y };
+
+    const wet = resolveWetReflection(
+      radius,
+      scale,
+      elapsed,
+      phase,
+      reducedMotion,
+    );
+    reflection.texture = base.texture;
+    reflection.anchor.copyFrom(base.anchor);
+    reflection.rotation = base.rotation;
+    reflection.position.set(
+      base.position.x + wet.offsetX,
+      base.position.y + wet.offsetY,
+    );
+    reflection.scale.set(wet.scaleX, wet.scaleY);
+    reflection.alpha = wet.alpha;
+    reflection.tint = GAMEPLAY_COLORS.rain;
+    reflection.visible = true;
+
+    const cast = resolveCastShadow(radius, scale, strength);
+    shadow.texture = base.texture;
+    shadow.anchor.copyFrom(base.anchor);
+    shadow.rotation = base.rotation;
+    shadow.position.set(
+      base.position.x + cast.offsetX,
+      base.position.y + cast.offsetY,
+    );
+    shadow.scale.set(cast.scaleX, cast.scaleY);
+    shadow.alpha = cast.alpha;
+    shadow.tint = GAMEPLAY_COLORS.void;
+    shadow.visible = true;
+
+    const rimOffset = resolveRimOffset(radius);
+    rim.texture = base.texture;
+    rim.anchor.copyFrom(base.anchor);
+    rim.rotation = base.rotation;
+    rim.position.set(
+      base.position.x + rimOffset.x,
+      base.position.y + rimOffset.y,
+    );
+    rim.scale.set(scale.x, scale.y);
+    rim.alpha = GROUNDED_LIGHTING.rimAlpha;
+    rim.tint = GAMEPLAY_COLORS.bone;
+    rim.visible = true;
+  }
+
+  private hideActorGrounding(index: number): void {
+    const reflection = this.enemyReflectionSprites[index];
+    const shadow = this.enemyShadowSprites[index];
+    const rim = this.enemyRimSprites[index];
+    if (reflection !== undefined) {
+      reflection.visible = false;
+    }
+    if (shadow !== undefined) {
+      shadow.visible = false;
+    }
+    if (rim !== undefined) {
+      rim.visible = false;
+    }
   }
 
   private updateEnemySprite(
@@ -1096,15 +2054,12 @@ export class LoopPlaygroundRenderer {
       Math.sin(elapsed * 3.7 + enemy.phase * 1.9) * 0.012 +
       locomotionRoll +
       staggerTwitch;
-    const angle =
-      enemy.archetype === 'drifter'
-        ? Math.atan2(
-            player.y - enemy.position.y,
-            player.x - enemy.position.x,
-          )
-        : Math.atan2(enemy.facing.y, enemy.facing.x);
+    const angle = this.enemyFacingAngle(enemy, player);
+    const usesDirectionalTexture =
+      this.isDirectionalEnemyTexture(texture);
     const breath = Math.sin(elapsed * 2.2 + enemy.phase) * 0.022;
     const hasDedicatedTexture =
+      usesDirectionalTexture ||
       this.enemyTextures[enemy.archetype] === texture ||
       this.armoredDrifterTexture === texture;
     const tuning = hasDedicatedTexture
@@ -1114,7 +2069,7 @@ export class LoopPlaygroundRenderer {
       (enemy.radius * tuning.heightInRadii) / texture.height;
 
     sprite.texture = texture;
-    sprite.anchor.set(0.5, tuning.anchorY);
+    sprite.anchor.set(0.5, usesDirectionalTexture ? 0.9 : tuning.anchorY);
     sprite.position.set(
       enemy.position.x -
         enemy.facing.y * (staggerTwitch * 16 + walk.contact * 0.8),
@@ -1122,7 +2077,10 @@ export class LoopPlaygroundRenderer {
         enemy.facing.x * staggerTwitch * 16 -
         Math.abs(walk.passing) * 1.1,
     );
-    sprite.rotation = angle + Math.PI * 0.5 + twitch;
+    sprite.rotation = enemySpriteRotation(
+      usesDirectionalTexture,
+      angle + Math.PI * 0.5 + twitch,
+    );
     sprite.scale.set(
       baseScale *
         tuning.scaleX *
@@ -1139,6 +2097,68 @@ export class LoopPlaygroundRenderer {
           ? this.productionEnemyTint(enemy.archetype, enemy.behaviorState)
           : this.drifterFallbackTint(enemy.archetype, enemy.behaviorState);
     sprite.visible = true;
+  }
+
+  private enemyFacingAngle(
+    enemy: PlaygroundEnemyView,
+    player: Vec2,
+  ): number {
+    return enemy.archetype === 'drifter'
+      ? Math.atan2(
+          player.y - enemy.position.y,
+          player.x - enemy.position.x,
+        )
+      : Math.atan2(enemy.facing.y, enemy.facing.x);
+  }
+
+  private directionalEnemyTexture(
+    enemy: PlaygroundEnemyView,
+  ): Texture | null {
+    const textures = this.directionalTexturesFor(enemy);
+    if (textures.length === 0) {
+      return null;
+    }
+
+    const previous = this.enemyDirectionalStates.get(enemy.id);
+    const frameIndex = enemyDirectionalFrameIndex(
+      enemy.velocity,
+      enemy.facing,
+      previous?.frameIndex ?? 4,
+    );
+    this.enemyDirectionalStates.set(enemy.id, {
+      frameIndex,
+      lastSeenFrame: this.actorRenderFrame,
+    });
+    return textures[frameIndex] ?? null;
+  }
+
+  private directionalTexturesFor(
+    enemy: PlaygroundEnemyView,
+  ): readonly Texture[] {
+    if (enemy.archetype === 'drifter') {
+      return drifterDirectionalFamily(
+        enemy.captureProfile,
+        enemy.armored,
+      ) === 'armored'
+        ? this.armoredDrifterDirectionalTextures
+        : this.drifterDirectionalTextures;
+    }
+    return (
+      this.enemyDirectionalTextures[enemy.archetype] ??
+      EMPTY_WALK_TEXTURES
+    );
+  }
+
+  private isDirectionalEnemyTexture(texture: Texture): boolean {
+    if (
+      this.drifterDirectionalTextures.includes(texture) ||
+      this.armoredDrifterDirectionalTextures.includes(texture)
+    ) {
+      return true;
+    }
+    return Object.values(this.enemyDirectionalTextures).some(
+      (textures) => textures?.includes(texture) === true,
+    );
   }
 
   private enemyWalkTexturesFor(
@@ -1524,7 +2544,10 @@ export class LoopPlaygroundRenderer {
     state: PlaygroundRenderState,
     facingAngle: number,
   ): void {
-    if (this.carrierTexture === null) {
+    if (
+      this.carrierTexture === null &&
+      this.carrierDirectionalTextures.length === 0
+    ) {
       this.playerSprite.visible = false;
       return;
     }
@@ -1564,19 +2587,32 @@ export class LoopPlaygroundRenderer {
                 PLAYGROUND_TUNING.closureDurationSeconds,
             )) *
           0.12;
+    const directionalTexture =
+      this.carrierDirectionalTextures[
+        directionalFrameIndexForAngle(facingAngle)
+      ];
     const activeTexture =
-      this.carrierWalkTextures[walk.frame] ?? this.carrierTexture;
+      directionalTexture ??
+      this.carrierWalkTextures[walk.frame] ??
+      this.carrierTexture;
+    if (activeTexture === null) {
+      this.playerSprite.visible = false;
+      return;
+    }
+    const usesDirectionalTexture = directionalTexture !== undefined;
     const baseScale =
       (PLAYGROUND_TUNING.playerRadius * 5.7) / activeTexture.height;
     this.playerSprite.texture = activeTexture;
+    this.playerSprite.anchor.set(0.5, usesDirectionalTexture ? 0.9 : 0.42);
     this.playerSprite.position.set(
       state.player.x - Math.sin(facingAngle) * walk.contact * movement * 1.4,
       state.player.y +
         Math.cos(facingAngle) * walk.contact * movement * 1.4 -
         Math.abs(walk.passing) * 1.2,
     );
-    this.playerSprite.rotation =
-      facingAngle + Math.PI * 0.5 + walk.passing * movement * 0.032;
+    this.playerSprite.rotation = usesDirectionalTexture
+      ? 0
+      : facingAngle + Math.PI * 0.5 + walk.passing * movement * 0.032;
     this.playerSprite.scale.set(
       baseScale *
         (1 - breath * 0.3 + Math.abs(walk.passing) * 0.016 + captureKick),
@@ -1600,6 +2636,19 @@ export class LoopPlaygroundRenderer {
     enemy: PlaygroundEnemyView,
     walk: WalkCycleSample,
   ): void {
+    const radius = enemy.radius;
+    const castShadow = {
+      x: enemy.position.x + radius * 0.64,
+      y: enemy.position.y + radius * 0.98,
+    };
+    this.traceOrientedEllipse(
+      graphics,
+      castShadow,
+      radius * 1.58,
+      radius * 0.42,
+      0.42,
+    );
+    graphics.fill({ color: GAMEPLAY_COLORS.void, alpha: 0.28 });
     graphics
       .ellipse(
         enemy.position.x - enemy.facing.y * walk.contact * enemy.radius * 0.08,
@@ -1607,7 +2656,7 @@ export class LoopPlaygroundRenderer {
         enemy.radius * (1.22 + Math.abs(walk.contact) * 0.16),
         enemy.radius * (0.42 + Math.abs(walk.passing) * 0.08),
       )
-      .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.58 });
+      .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.72 });
     graphics.circle(
       enemy.position.x,
       enemy.position.y,
@@ -1626,6 +2675,17 @@ export class LoopPlaygroundRenderer {
     player: Vec2,
   ): void {
     const radius = PLAYGROUND_TUNING.playerRadius;
+    this.traceOrientedEllipse(
+      graphics,
+      {
+        x: player.x + radius * 0.76,
+        y: player.y + radius * 1.12,
+      },
+      radius * 2.05,
+      radius * 0.54,
+      0.42,
+    );
+    graphics.fill({ color: GAMEPLAY_COLORS.void, alpha: 0.34 });
     graphics
       .ellipse(
         player.x,
@@ -1633,7 +2693,7 @@ export class LoopPlaygroundRenderer {
         radius * 1.62,
         radius * 0.6,
       )
-      .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.7 });
+      .fill({ color: GAMEPLAY_COLORS.void, alpha: 0.82 });
     graphics.circle(player.x, player.y, radius * 1.85).fill({
       color: GAMEPLAY_COLORS.arterial,
       alpha: 0.035,
@@ -2031,6 +3091,219 @@ export class LoopPlaygroundRenderer {
     }
   }
 
+  /**
+   * Breaks up the uniform asphalt field with world-fixed lighting. A flat
+   * darkening pass drops the whole district, then each emergency light pools
+   * back over it, so the road has near/far tone variation instead of one alpha
+   * across 3,200x1,800.
+   */
+  private drawGroundLighting(
+    graphics: Graphics,
+    minX: number,
+    minY: number,
+    width: number,
+    height: number,
+  ): void {
+    graphics.rect(minX, minY, width, height).fill({
+      color: GAMEPLAY_COLORS.void,
+      alpha: 0.2,
+    });
+
+    // Pools stay cold. Arterial red is reserved for the loop and capture, so
+    // the road is lifted with wet asphalt tone rather than lamp colour.
+    for (const light of DISTRICT_LIGHTS) {
+      for (let ring = 0; ring < GROUND_LIGHT_RINGS; ring += 1) {
+        const falloff = 1 - ring / GROUND_LIGHT_RINGS;
+        graphics
+          .circle(
+            light.position.x,
+            light.position.y,
+            GROUND_LIGHT_RADIUS * (0.24 + (ring / GROUND_LIGHT_RINGS) * 0.76),
+          )
+          .fill({
+            color: GAMEPLAY_COLORS.asphaltLight,
+            alpha: 0.06 * falloff * falloff,
+          });
+      }
+      graphics
+        .circle(light.position.x, light.position.y, GROUND_LIGHT_RADIUS * 0.16)
+        .fill({ color: GAMEPLAY_COLORS.arterial, alpha: 0.03 });
+    }
+
+    // Cold rain haze pooling in the low corners keeps the far road from
+    // matching the lit hunt space exactly.
+    for (let index = 0; index < GROUND_HAZE_POOLS; index += 1) {
+      const unit = (index + 0.5) / GROUND_HAZE_POOLS;
+      graphics
+        .ellipse(
+          minX + width * unit,
+          minY + height * (index % 2 === 0 ? 0.18 : 0.84),
+          width * 0.19,
+          height * 0.24,
+        )
+        .fill({ color: GAMEPLAY_COLORS.rain, alpha: 0.022 });
+    }
+  }
+
+  /**
+   * Raised street debris. Each block owns one pooled display object inside the
+   * same sortable container as bitmap actors, so footpoint depth decides which
+   * silhouette occludes the other in the 3/4 camera.
+   */
+  private drawStreetBlocks(): void {
+    for (let index = 0; index < DISTRICT_BLOCKS.length; index += 1) {
+      const block = DISTRICT_BLOCKS[index]!;
+      const graphics = this.ensureStreetBlockGraphics(index).clear();
+      const footprint = orientedQuadCorners(
+        block.position,
+        block.length,
+        block.width,
+        block.rotation,
+      );
+      const top = this.drawExtrudedVolume(
+        graphics,
+        footprint,
+        block.height,
+        STREET_BLOCK_COLORS[block.kind],
+        block.kind === 'rubble' ? 0.92 : 0.97,
+      );
+      this.tracePolygon(graphics, top);
+      graphics.stroke({
+        color: GAMEPLAY_COLORS.rain,
+        width: block.kind === 'rubble' ? 0.8 : 1.2,
+        alpha: block.kind === 'rubble' ? 0.16 : 0.24,
+      });
+      graphics.zIndex = blockDepthKey(
+        block.position.y,
+        block.length,
+        block.width,
+        block.rotation,
+      );
+      graphics.visible = true;
+    }
+
+    for (
+      let index = DISTRICT_BLOCKS.length;
+      index < this.streetBlockGraphics.length;
+      index += 1
+    ) {
+      this.streetBlockGraphics[index]!.visible = false;
+    }
+  }
+
+  private createDirectionalFrames(sheet: Texture | null): readonly Texture[] {
+    return this.createGridFrames(sheet, 4, 2);
+  }
+
+  private createGridFrames(
+    sheet: Texture | null,
+    columns: number,
+    rows: number,
+  ): readonly Texture[] {
+    if (sheet === null) {
+      return Object.freeze([]);
+    }
+
+    const frameWidth = sheet.width / columns;
+    const frameHeight = sheet.height / rows;
+    return Object.freeze(
+      Array.from({ length: columns * rows }, (_, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        return new Texture({
+          source: sheet.source,
+          label: `${sheet.label ?? 'directional'}-frame-${index}`,
+          frame: new Rectangle(
+            column * frameWidth,
+            row * frameHeight,
+            frameWidth,
+            frameHeight,
+          ),
+        });
+      }),
+    );
+  }
+
+  private syncDistrictPropSprites(): void {
+    const shadows = this.districtPropShadows.clear();
+
+    DISTRICT_PROPS.forEach((definition, index) => {
+      const texture =
+        this.districtPropTextures[DISTRICT_PROP_FRAME[definition.kind]];
+      if (texture === undefined) {
+        return;
+      }
+
+      const sprite =
+        this.districtPropSprites[index] ?? new Sprite(Texture.EMPTY);
+      if (this.districtPropSprites[index] === undefined) {
+        this.districtPropSprites.push(sprite);
+        this.depthLayer.addChild(sprite);
+      }
+
+      sprite.texture = texture;
+      sprite.anchor.set(0.5, 0.9);
+      sprite.position.copyFrom(definition.position);
+      sprite.scale.set(definition.scale);
+      const treatment = DISTRICT_PROP_BAND_TREATMENT[definition.band];
+      sprite.alpha = treatment.alpha;
+      sprite.tint = treatment.tint;
+      sprite.zIndex = actorDepthKey(
+        definition.position.y + definition.depthOffset,
+      );
+      sprite.visible = true;
+
+      const shadowWidth =
+        definition.kind === 'floodlight'
+          ? 52
+          : definition.kind === 'bio-barrier'
+            ? 94
+            : 138;
+      const shadowHeight =
+        definition.kind === 'floodlight'
+          ? 20
+          : definition.kind === 'bio-barrier'
+            ? 26
+            : 42;
+      shadows
+        .ellipse(
+          definition.position.x + 18 * definition.scale,
+          definition.position.y + 12 * definition.scale,
+          shadowWidth * definition.scale,
+          shadowHeight * definition.scale,
+        )
+        .fill({
+          color: GAMEPLAY_COLORS.void,
+          alpha:
+            definition.band === 'background'
+              ? 0.3
+              : definition.band === 'midground'
+                ? 0.4
+                : 0.5,
+        });
+    });
+
+    for (
+      let index = DISTRICT_PROPS.length;
+      index < this.districtPropSprites.length;
+      index += 1
+    ) {
+      this.districtPropSprites[index]!.visible = false;
+    }
+  }
+
+  private ensureStreetBlockGraphics(index: number): Graphics {
+    const existing = this.streetBlockGraphics[index];
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const graphics = new Graphics();
+    this.streetBlockGraphics.push(graphics);
+    this.depthLayer.addChild(graphics);
+    return graphics;
+  }
+
   private drawBarricades(
     graphics: Graphics,
     width: number,
@@ -2080,6 +3353,60 @@ export class LoopPlaygroundRenderer {
     }
   }
 
+  /**
+   * Draws a raised footprint as a real volume: ground shadow, near side faces,
+   * then the lifted top face. This is what gives the 3/4 camera its depth; a
+   * flat fill on the ground plane reads as a painted decal instead.
+   */
+  private drawExtrudedVolume(
+    graphics: Graphics,
+    footprint: readonly Vec2[],
+    height: number,
+    topColor: number,
+    topAlpha = 1,
+  ): readonly Vec2[] {
+    const shadow = translateFootprint(footprint, volumeShadowOffset(height));
+    this.tracePolygon(graphics, shadow);
+    graphics.fill({
+      color: GAMEPLAY_COLORS.void,
+      alpha: VOLUME_PROJECTION.shadowAlpha,
+    });
+
+    for (const face of visibleSideFaces(footprint, height)) {
+      this.tracePolygon(graphics, [
+        face.base[0],
+        face.base[1],
+        face.top[1],
+        face.top[0],
+      ]);
+      graphics.fill({
+        color: shadeColor(topColor, face.shade),
+        alpha: topAlpha,
+      });
+    }
+
+    const top = translateFootprint(footprint, volumeTopOffset(height));
+    this.tracePolygon(graphics, top);
+    graphics.fill({
+      color: shadeColor(topColor, VOLUME_PROJECTION.topFaceShade),
+      alpha: topAlpha,
+    });
+
+    return top;
+  }
+
+  private tracePolygon(graphics: Graphics, points: readonly Vec2[]): void {
+    if (points.length < 3) {
+      return;
+    }
+
+    graphics.moveTo(points[0]!.x, points[0]!.y);
+    for (let index = 1; index < points.length; index += 1) {
+      graphics.lineTo(points[index]!.x, points[index]!.y);
+    }
+    graphics.closePath();
+  }
+
   private drawConcreteBlock(
     graphics: Graphics,
     center: Vec2,
@@ -2088,17 +3415,25 @@ export class LoopPlaygroundRenderer {
     angle: number,
     seed: number,
   ): void {
-    this.traceOrientedQuad(graphics, center, length, width, angle);
-    graphics
-      .fill({ color: GAMEPLAY_COLORS.asphaltLight, alpha: 0.96 })
-      .stroke({
-        color: GAMEPLAY_COLORS.rain,
-        width: 1.4,
-        alpha: 0.3,
-      });
+    const footprint = orientedQuadCorners(center, length, width, angle);
+    const top = this.drawExtrudedVolume(
+      graphics,
+      footprint,
+      WORLD_BARRIER_HEIGHT,
+      GAMEPLAY_COLORS.asphaltLight,
+      0.96,
+    );
+    this.tracePolygon(graphics, top);
+    graphics.stroke({
+      color: GAMEPLAY_COLORS.rain,
+      width: 1.4,
+      alpha: 0.3,
+    });
 
+    const lift = volumeTopOffset(WORLD_BARRIER_HEIGHT);
+    const topCenter = { x: center.x + lift.x, y: center.y + lift.y };
     const chipOffset = (deterministicUnit(seed, 181) - 0.5) * length * 0.35;
-    const chip = this.localPoint(center, angle, chipOffset, -width * 0.52);
+    const chip = this.localPoint(topCenter, angle, chipOffset, -width * 0.52);
     this.drawShard(
       graphics,
       chip,
@@ -2109,7 +3444,7 @@ export class LoopPlaygroundRenderer {
       0.9,
     );
 
-    const warningCenter = this.localPoint(center, angle, length * 0.18, 0);
+    const warningCenter = this.localPoint(topCenter, angle, length * 0.18, 0);
     this.traceOrientedQuad(
       graphics,
       warningCenter,
@@ -3203,9 +4538,8 @@ export class LoopPlaygroundRenderer {
     progress: number,
     reducedFlash: boolean,
   ): void {
-    const flash =
-      (1 - smoothstep(0.02, 0.15, progress)) *
-      (reducedFlash ? 0.3 : 1);
+    const presentation = capturePresentationStrengths(progress, reducedFlash);
+    const flash = presentation.closureBang;
     const contraction = easeInOutCubic(phase(progress, 0.05, 0.62));
     const ringFade = 1 - smoothstep(0.62, 0.94, progress);
     const contracted = closureEcho.closure.points.map((point) =>
@@ -3250,15 +4584,30 @@ export class LoopPlaygroundRenderer {
     if (flash > 0) {
       this.tracePath(graphics, closureEcho.closure.points, true);
       graphics.stroke({
+        color: GAMEPLAY_COLORS.void,
+        width: 13,
+        alpha: flash * 0.72,
+      });
+      this.tracePath(graphics, closureEcho.closure.points, true);
+      graphics.stroke({
         color: GAMEPLAY_COLORS.bone,
-        width: 5 + flash * 5,
-        alpha: flash * 0.78,
+        width: 6 + flash * 3,
+        alpha: flash * 0.9,
       });
       this.tracePath(graphics, closureEcho.closure.points, true);
       graphics.stroke({
         color: GAMEPLAY_COLORS.arterialBright,
-        width: 2,
-        alpha: flash,
+        width: 2.8,
+        alpha: flash * 0.96,
+      });
+      graphics.circle(centroid.x, centroid.y, 12 + (1 - flash) * 18).stroke({
+        color: GAMEPLAY_COLORS.bone,
+        width: 4.5,
+        alpha: flash * 0.78,
+      });
+      graphics.circle(centroid.x, centroid.y, 5 + (1 - flash) * 9).fill({
+        color: GAMEPLAY_COLORS.arterialBright,
+        alpha: flash * 0.52,
       });
     }
 
@@ -3335,6 +4684,7 @@ export class LoopPlaygroundRenderer {
       centroid,
       player,
       progress,
+      reducedFlash,
     );
 
     const implosion = phase(progress, 0.43, 0.73);
@@ -4014,6 +5364,7 @@ export class LoopPlaygroundRenderer {
     centroid: Vec2,
     player: Vec2,
     progress: number,
+    reducedFlash: boolean,
   ): void {
     const intake = phase(progress, 0.47, 1);
     if (intake <= 0) {
@@ -4062,17 +5413,75 @@ export class LoopPlaygroundRenderer {
       });
     }
 
+    // Three authored reward conduits remain legible at half-resolution and
+    // visibly terminate at Carrier-09. Fine particles above supply texture;
+    // these heavy paths communicate the actual intake direction.
+    const presentation = capturePresentationStrengths(progress, reducedFlash);
+    if (presentation.intakeTrail > 0) {
+      const dx = player.x - centroid.x;
+      const dy = player.y - centroid.y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const normal = { x: -dy / distance, y: dx / distance };
+
+      for (let trail = 0; trail < 3; trail += 1) {
+        const side = trail - 1;
+        const source =
+          capturedPositions[trail % Math.max(1, capturedPositions.length)] ??
+          centroid;
+        const start = lerpVec2(source, centroid, 0.7);
+        const controlOneBase = lerpVec2(start, player, 0.34);
+        const controlTwoBase = lerpVec2(start, player, 0.76);
+        const controlOne = {
+          x: controlOneBase.x + normal.x * side * 18,
+          y: controlOneBase.y + normal.y * side * 18,
+        };
+        const controlTwo = {
+          x: controlTwoBase.x - normal.x * side * 10,
+          y: controlTwoBase.y - normal.y * side * 10,
+        };
+        const alpha = presentation.intakeTrail * (trail === 1 ? 0.9 : 0.7);
+
+        this.drawBezierStroke(
+          graphics,
+          start,
+          controlOne,
+          controlTwo,
+          player,
+          GAMEPLAY_COLORS.void,
+          trail === 1 ? 7.5 : 6.2,
+          alpha * 0.84,
+        );
+        this.drawBezierStroke(
+          graphics,
+          start,
+          controlOne,
+          controlTwo,
+          player,
+          trail === 1
+            ? GAMEPLAY_COLORS.bone
+            : GAMEPLAY_COLORS.arterialBright,
+          trail === 1 ? 3.2 : 2.6,
+          alpha,
+        );
+      }
+    }
+
     const arrival = phase(progress, 0.78, 1);
     if (arrival > 0) {
-      const pulse = Math.sin(arrival * Math.PI);
-      graphics.circle(player.x, player.y, 11 + arrival * 18).stroke({
+      const pulse = presentation.arrivalPulse;
+      graphics.circle(player.x, player.y, 10 + arrival * 22).stroke({
         color: GAMEPLAY_COLORS.bone,
-        width: 2,
-        alpha: pulse * 0.55,
+        width: 3.2,
+        alpha: pulse * 0.72,
       });
-      graphics.circle(player.x, player.y, 5 + pulse * 5).fill({
+      graphics.circle(player.x, player.y, 7 + arrival * 13).stroke({
         color: GAMEPLAY_COLORS.arterialBright,
-        alpha: pulse * 0.5,
+        width: 2.2,
+        alpha: pulse * 0.68,
+      });
+      graphics.circle(player.x, player.y, 6 + pulse * 6).fill({
+        color: GAMEPLAY_COLORS.arterialBright,
+        alpha: pulse * 0.58,
       });
     }
   }

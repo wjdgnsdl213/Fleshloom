@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DISTRICT_BIOMASS,
+  DISTRICT_BLOCKS,
   DISTRICT_CROSSWALKS,
   DISTRICT_LIGHTS,
   DISTRICT_PUDDLES,
+  DISTRICT_PROPS,
   DISTRICT_VENTS,
 } from '../../../src/content/quarantineDistrict';
 import { QUARANTINE_WORLD_BOUNDS } from '../../../src/config/world';
@@ -22,6 +24,8 @@ describe('quarantine district layout', () => {
       ...DISTRICT_VENTS.map((entry) => entry.position),
       ...DISTRICT_BIOMASS.map((entry) => entry.origin),
       ...DISTRICT_CROSSWALKS.map((entry) => entry.position),
+      ...DISTRICT_PROPS.map((entry) => entry.position),
+      ...DISTRICT_BLOCKS.map((entry) => entry.position),
     ];
 
     expect(positions.length).toBeGreaterThanOrEqual(30);
@@ -49,6 +53,35 @@ describe('quarantine district layout', () => {
     expect(
       DISTRICT_BIOMASS.every(
         (entry) => entry.spread > 0 && entry.massCount > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('authors three prop depth bands around the representative hunt view', () => {
+    const representativeProps = DISTRICT_PROPS.filter(
+      (entry) =>
+        entry.position.x >= 900 &&
+        entry.position.x <= 2_300 &&
+        entry.position.y >= 500 &&
+        entry.position.y <= 1_300,
+    );
+
+    expect(representativeProps.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(representativeProps.map((entry) => entry.band))).toEqual(
+      new Set(['background', 'midground', 'foreground']),
+    );
+    expect(new Set(representativeProps.map((entry) => entry.kind)).size).toBe(4);
+    expect(representativeProps.every((entry) => entry.scale <= 0.5)).toBe(true);
+  });
+
+  it('keeps plain procedural blocks outside the representative combat lane', () => {
+    expect(
+      DISTRICT_BLOCKS.every(
+        (entry) =>
+          entry.position.x < 900 ||
+          entry.position.x > 2_300 ||
+          entry.position.y < 500 ||
+          entry.position.y > 1_300,
       ),
     ).toBe(true);
   });

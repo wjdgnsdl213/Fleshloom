@@ -117,3 +117,52 @@ and Carrier-09 before decomposition and intake. These strands are feedback only:
 capture membership, layered peel rules, XP, and recovery remain unchanged. The
 source, final cleanup prompt, alpha validation, and runtime dimensions are
 recorded under `references/generated/production-art-v5/`.
+
+### P7-3 world-fixed actor grounding
+
+Production actor textures bake one light direction, and the runtime rotates the
+whole sprite to follow facing, so the baked light turns with the body. Each
+actor therefore draws three pooled companions from its own texture: a silhouette
+cast shadow offset down-right, a mirrored wet-road reflection, and an additive
+bone rim offset back toward the key light. The offsets live in
+`src/presentation/GroundedLighting.ts` and stay screen-fixed under rotation.
+
+The district key light is fixed high and screen up-left. Any future authored
+lighting, prop shading, or environment bloom must agree with that direction.
+
+This is a partial fix. Interior shading still rotates with the sprite, and one
+authored direction cannot show perspective change between facing toward and
+away from the camera. The full fix is multi-direction prerendered actor sheets
+— 3D used offline as a render source, not a runtime renderer — planned as P7-4
+and constrained by the 6MiB startup art budget.
+
+### P7-3 district volumes
+
+Depth in this camera comes from objects, not from the character. Any raised
+world object draws through `src/presentation/ExtrudedVolume.ts` as three parts:
+a cast shadow thrown down-right along the key light, the side faces that turn
+toward the viewer, and a top face lifted up-screen from the ground footprint.
+A flat fill on the ground plane is a decal and must only be used for things
+that genuinely lie flat — road paint, puddles, stains, cracks.
+
+Ground tone is never uniform. The district carries a darkening pass with cold
+light pools around each emergency lamp. Pools use wet-asphalt tone, not lamp
+colour: arterial red stays reserved for the loop and the capture beat.
+
+Street blocks are presentation only. They carry no collision, so interior
+heights stay low enough that an actor crossing one still reads as plausible.
+Tall pieces belong in the perimeter band.
+
+### P7-5 fixed-light directional actors and authored depth
+
+- Carrier-09 and onboarding Drifters use eight offline-rendered directions with one stable upper-left key light. Runtime rotation of these bitmaps is forbidden; direction selection changes the frame.
+- Foot-contact Y is the shared depth key for actors, extruded blocks, and authored quarantine props. Low props may occlude lower body mass but must not hide loop telegraphs or capture feedback.
+- Every representative combat frame should show at least three depth bands: a cropped foreground occluder, the playable actor/enemy band, and a distant landmark or light source.
+- Large landmarks use cold metal, wet concrete, ivory growth, and restrained arterial binding. They remain presentation-only unless a future gameplay decision explicitly adds collision.
+
+### P7-8 late-enemy and Warden closure
+
+- Armored Drifter, Rusher, Watcher, Cutter, Mimic, Elite Husk, and Warden use fixed-light directional or stable-frame 3D prerenders. Directional actors must never rotate their bitmap; motion selects an atlas frame and keeps shadows, reflections, and rim lighting screen-fixed.
+- Warden reads through body volume first: a large grounded shell, segmented bone/tendon arcs, restrained arterial seams, and small stage-specific cyan control structures. Full bright circles are reserved for authoritative telegraph boundaries and must be segmented rather than reading as flat UI rings.
+- Capture closure is a short lethal seam, contraction preserves mass, decomposition retains target silhouettes, and exactly three heavy reward conduits terminate at Carrier before the arrival pulse.
+- The current desktop visual gate is GO. Do not trade this readability for full mesh simulation; physical mobile and full-run evidence are release QA, not reasons to change locked gameplay.
