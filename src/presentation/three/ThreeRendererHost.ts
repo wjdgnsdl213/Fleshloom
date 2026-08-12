@@ -12,7 +12,6 @@ import {
   ACESFilmicToneMapping,
   BufferAttribute,
   BufferGeometry,
-  CapsuleGeometry,
   Mesh,
   MeshBasicMaterial,
   OrthographicCamera,
@@ -24,7 +23,11 @@ import {
 } from 'three';
 import { PLAYGROUND_TUNING } from '../../config/graphics';
 import { QUARANTINE_WORLD_BOUNDS } from '../../config/world';
-import type { Vec2 } from '../../core/geometry/vector';
+import {
+  WALK_CYCLE_TUNING,
+  advanceWalkDistance,
+  type WalkCycleTuning,
+} from '../Locomotion';
 import type {
   FrameListener,
   RendererHost,
@@ -32,6 +35,9 @@ import type {
 } from '../RendererHost';
 import type { PlaygroundRenderState } from '../RenderState';
 import { resolveCameraFraming } from './CameraRig';
+import { rigFor } from './creatures/archetypes';
+import { CreatureInstance } from './creatures/CreatureInstance';
+import { sampleGait, type GaitSample } from './creatures/gait';
 import { SCENE_PALETTE, SHARED_MATERIALS, disposeSharedMaterials } from './materials';
 import { WorldStage } from './WorldStage';
 
@@ -42,19 +48,6 @@ const MAX_PIXEL_RATIO = 1.5;
 const TETHER_LIFT = 2.4;
 const TETHER_HALF_WIDTH = 3.6;
 
-const CAPSULE_SEGMENTS = 10;
-const CAPSULE_RINGS = 5;
-
-/**
- * Body proportions relative to the collision radius. Bodies are far taller
- * than they are wide — the 2D renderer already draws actors at roughly 5.7x
- * their collision radius, so matching the collider one-to-one would leave the
- * creatures reading as pebbles.
- */
-const BODY_RADIUS_IN_COLLIDER_RADII = 0.95;
-const BODY_CYLINDER_IN_COLLIDER_RADII = 2.1;
-const BODY_HEIGHT_IN_COLLIDER_RADII =
-  BODY_RADIUS_IN_COLLIDER_RADII * 2 + BODY_CYLINDER_IN_COLLIDER_RADII;
 
 export class ThreeRendererHost implements RendererHost {
   private renderer: WebGLRenderer | null = null;
@@ -63,8 +56,11 @@ export class ThreeRendererHost implements RendererHost {
   private readonly frameListeners: FrameListener[] = [];
 
   private readonly actors = new Group();
-  private readonly actorPool: Mesh[] = [];
+  private readonly creaturePools = new Map<string, CreatureInstance[]>();
+  private readonly walkDistances = new Map<string, number>();
+  private readonly seenActors = new Set<string>();
   private readonly projectilePool: Mesh[] = [];
+  private lastElapsed = 0;
 
   private readonly tetherGeometry = new BufferGeometry();
   private tetherVertices = new Float32Array(0);
@@ -176,10 +172,17 @@ export class ThreeRendererHost implements RendererHost {
     this.resizeObserver = null;
     this.frameListeners.length = 0;
 
-    for (const mesh of [...this.actorPool, ...this.projectilePool]) {
+    for (const pool of this.creaturePools.values()) {
+      for (const creature of pool) {
+        creature.dispose();
+      }
+    }
+    this.creaturePools.clear();
+    this.walkDistances.clear();
+
+    for (const mesh of this.projectilePool) {
       mesh.geometry.dispose();
     }
-    this.actorPool.length = 0;
     this.projectilePool.length = 0;
 
     this.tetherGeometry.dispose();
@@ -237,81 +240,116 @@ export class ThreeRendererHost implements RendererHost {
       framing.target.x,
       framing.target.z,
       framing.halfWidth,
-      framing.halfHeight / Math.sin(Math.PI / 3),
+      (framing.visibleGround.maxZ - framing.visibleGround.minZ) / 2,
     );
   }
 
-  private actorAt(index: number): Mesh {
-    const existing = this.actorPool[index];
+  /**
+   * Creatures are pooled per archetype rather than in one flat list: rigs
+   * differ in limb count and proportion, so a pooled instance can only be
+   * handed back to an actor of the same archetype.
+   */
+  private creatureFor(archetype: string, taken: Map<string, number>): CreatureInstance {
+    const index = taken.get(archetype) ?? 0;
+    taken.set(archetype, index + 1);
+
+    let pool = this.creaturePools.get(archetype);
+    if (pool === undefined) {
+      pool = [];
+      this.creaturePools.set(archetype, pool);
+    }
+
+    const existing = pool[index];
     if (existing !== undefined) {
+      existing.setVisible(true);
       return existing;
     }
-    const mesh = new Mesh(
-      // Authored at collider-radius 1 so each instance scales uniformly and
-      // the hemispherical caps never shear.
-      new CapsuleGeometry(
-        BODY_RADIUS_IN_COLLIDER_RADII,
-        BODY_CYLINDER_IN_COLLIDER_RADII,
-        CAPSULE_RINGS,
-        CAPSULE_SEGMENTS,
-      ),
-      SHARED_MATERIALS.hostileFlesh,
+
+    const instance = new CreatureInstance(
+      rigFor(archetype),
+      archetype === 'hunter'
+        ? SHARED_MATERIALS.hunterFlesh
+        : SHARED_MATERIALS.hostileFlesh,
+      SHARED_MATERIALS.armorPlate,
     );
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.actorPool.push(mesh);
-    this.actors.add(mesh);
-    return mesh;
+    pool.push(instance);
+    this.actors.add(instance.root);
+    return instance;
   }
 
-  private placeCapsule(
-    mesh: Mesh,
-    position: Vec2,
-    radius: number,
-    facing: Vec2,
-  ): void {
-    mesh.scale.setScalar(radius);
-    mesh.position.set(
-      position.x,
-      (radius * BODY_HEIGHT_IN_COLLIDER_RADII) / 2,
-      position.y,
-    );
-    if (facing.x !== 0 || facing.y !== 0) {
-      mesh.rotation.y = Math.atan2(facing.x, facing.y);
-    }
-    mesh.visible = true;
+  /**
+   * Walk distance drives the gait, and the render state carries position
+   * rather than distance travelled, so it is integrated here per actor. The
+   * key has to survive across frames, which is why enemies are tracked by id.
+   */
+  private advanceGait(
+    key: string,
+    speed: number,
+    deltaSeconds: number,
+    tuning: WalkCycleTuning,
+  ): GaitSample {
+    const previous = this.walkDistances.get(key) ?? 0;
+    const distance = advanceWalkDistance(previous, speed, deltaSeconds);
+    this.walkDistances.set(key, distance);
+    this.seenActors.add(key);
+    return sampleGait(distance, speed, tuning);
   }
 
   private syncActors(state: PlaygroundRenderState): void {
-    let index = 0;
+    const deltaSeconds = Math.min(
+      Math.max(state.elapsed - this.lastElapsed, 0),
+      0.1,
+    );
+    this.lastElapsed = state.elapsed;
 
-    const player = this.actorAt(index);
-    index += 1;
-    player.material = SHARED_MATERIALS.hunterFlesh;
-    this.placeCapsule(
-      player,
+    const taken = new Map<string, number>();
+    this.seenActors.clear();
+
+    const playerSpeed = Math.hypot(
+      state.playerVelocity.x,
+      state.playerVelocity.y,
+    );
+    const hunter = this.creatureFor('hunter', taken);
+    hunter.update(
       state.player,
-      PLAYGROUND_TUNING.playerRadius,
       state.playerVelocity,
+      PLAYGROUND_TUNING.playerRadius,
+      this.advanceGait(
+        'hunter',
+        playerSpeed,
+        deltaSeconds,
+        WALK_CYCLE_TUNING.carrier,
+      ),
     );
 
     for (const enemy of state.enemies) {
       if (!enemy.alive) {
         continue;
       }
-      const mesh = this.actorAt(index);
-      index += 1;
-      mesh.material =
-        enemy.armored === true
-          ? SHARED_MATERIALS.armorPlate
-          : SHARED_MATERIALS.hostileFlesh;
-      this.placeCapsule(mesh, enemy.position, enemy.radius, enemy.facing);
+      const creature = this.creatureFor(enemy.archetype, taken);
+      const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+      const tuning =
+        WALK_CYCLE_TUNING[enemy.archetype as keyof typeof WALK_CYCLE_TUNING] ??
+        WALK_CYCLE_TUNING.drifter;
+      creature.update(
+        enemy.position,
+        enemy.facing,
+        enemy.radius,
+        this.advanceGait(enemy.id, speed, deltaSeconds, tuning),
+      );
     }
 
-    for (let spare = index; spare < this.actorPool.length; spare += 1) {
-      const mesh = this.actorPool[spare];
-      if (mesh !== undefined) {
-        mesh.visible = false;
+    for (const [archetype, pool] of this.creaturePools) {
+      for (let spare = taken.get(archetype) ?? 0; spare < pool.length; spare += 1) {
+        pool[spare]?.setVisible(false);
+      }
+    }
+
+    // Drop gait state for actors that are gone, so a long run does not leak a
+    // map entry per corpse.
+    for (const key of this.walkDistances.keys()) {
+      if (!this.seenActors.has(key)) {
+        this.walkDistances.delete(key);
       }
     }
   }

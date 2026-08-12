@@ -58,11 +58,14 @@ export interface CameraFraming {
 
 export const CAMERA_RIG = Object.freeze({
   /**
-   * 60 deg from the ground plane. Shallower reads more cinematic but the
-   * foreshortening overscan is H * (1 - sin p) / (2 sin p) per edge, which
-   * passes 120 world units around 54 deg on a 1440p window.
+   * 55 deg from the ground plane — as oblique as the spawn margin allows.
+   * Overscan per edge is H * (1 - sin p) / (2 sin p), which reaches the 120
+   * world unit budget just under 54 deg on a 1440p window, so this sits one
+   * degree inside the wall. It matters beyond taste: vertical extents project
+   * at cos(pitch), so every degree the camera lies down is height the
+   * creatures get back, and a straight-down rig would flatten them away.
    */
-  pitchRadians: (60 * Math.PI) / 180,
+  pitchRadians: (55 * Math.PI) / 180,
   /** Orthographic, so this only sets clipping and light/fog distances. */
   elevation: 3_000,
   nearPlane: 10,
