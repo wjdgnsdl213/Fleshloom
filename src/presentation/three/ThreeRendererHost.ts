@@ -10,14 +10,10 @@
 
 import {
   ACESFilmicToneMapping,
-  BufferAttribute,
-  BufferGeometry,
   Mesh,
-  MeshBasicMaterial,
   OrthographicCamera,
   PCFSoftShadowMap,
   SphereGeometry,
-  DoubleSide,
   Group,
   WebGLRenderer,
 } from 'three';
@@ -40,14 +36,11 @@ import { CreatureInstance } from './creatures/CreatureInstance';
 import { sampleGait, type GaitSample } from './creatures/gait';
 import { resolveStance } from './creatures/stance';
 import { SCENE_PALETTE, SHARED_MATERIALS, disposeSharedMaterials } from './materials';
+import { TetherMesh } from './TetherMesh';
 import { WorldStage } from './WorldStage';
 
 /** Hard ceiling on device pixel ratio; integrated GPUs cannot afford 3x. */
 const MAX_PIXEL_RATIO = 1.5;
-
-/** Ground clearance for the tether ribbon. */
-const TETHER_LIFT = 2.4;
-const TETHER_HALF_WIDTH = 3.6;
 
 
 export class ThreeRendererHost implements RendererHost {
@@ -63,9 +56,7 @@ export class ThreeRendererHost implements RendererHost {
   private readonly projectilePool: Mesh[] = [];
   private lastElapsed = 0;
 
-  private readonly tetherGeometry = new BufferGeometry();
-  private tetherVertices = new Float32Array(0);
-  private tetherMesh: Mesh | null = null;
+  private readonly tether = new TetherMesh();
 
   private hostElement: HTMLElement | null = null;
   private viewWidth = 1;
@@ -94,18 +85,7 @@ export class ThreeRendererHost implements RendererHost {
     this.stage = new WorldStage(QUARANTINE_WORLD_BOUNDS);
     this.stage.scene.add(this.actors);
 
-    this.tetherMesh = new Mesh(
-      this.tetherGeometry,
-      new MeshBasicMaterial({
-        color: SCENE_PALETTE.arterialBright,
-        side: DoubleSide,
-        transparent: true,
-        opacity: 0.92,
-      }),
-    );
-    this.tetherMesh.frustumCulled = false;
-    this.tetherMesh.visible = false;
-    this.stage.scene.add(this.tetherMesh);
+    this.stage.scene.add(this.tether.group);
 
     host.appendChild(renderer.domElement);
     this.applyHostSize();
@@ -146,7 +126,7 @@ export class ThreeRendererHost implements RendererHost {
     this.applyCamera(state);
     this.syncActors(state);
     this.syncProjectiles(state);
-    this.syncTether(state);
+    this.tether.update(state);
     renderer.render(stage.scene, this.camera);
   }
 
@@ -186,11 +166,7 @@ export class ThreeRendererHost implements RendererHost {
     }
     this.projectilePool.length = 0;
 
-    this.tetherGeometry.dispose();
-    if (this.tetherMesh !== null) {
-      (this.tetherMesh.material as MeshBasicMaterial).dispose();
-      this.tetherMesh = null;
-    }
+    this.tether.dispose();
 
     this.stage?.dispose();
     this.stage = null;
@@ -389,70 +365,6 @@ export class ThreeRendererHost implements RendererHost {
         mesh.visible = false;
       }
     }
-  }
-
-  private syncTether(state: PlaygroundRenderState): void {
-    const mesh = this.tetherMesh;
-    if (mesh === null) {
-      return;
-    }
-
-    const samples = state.loopSamples;
-    const segments = samples.length - 1;
-    if (segments < 1) {
-      mesh.visible = false;
-      return;
-    }
-
-    const floats = segments * 18;
-    if (this.tetherVertices.length !== floats) {
-      this.tetherVertices = new Float32Array(floats);
-      this.tetherGeometry.setAttribute(
-        'position',
-        new BufferAttribute(this.tetherVertices, 3),
-      );
-    }
-
-    const vertices = this.tetherVertices;
-    let cursor = 0;
-    for (let index = 0; index < segments; index += 1) {
-      const from = samples[index];
-      const to = samples[index + 1];
-      if (from === undefined || to === undefined) {
-        continue;
-      }
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const length = Math.hypot(dx, dy);
-      if (length < 1e-6) {
-        continue;
-      }
-      const nx = (-dy / length) * TETHER_HALF_WIDTH;
-      const ny = (dx / length) * TETHER_HALF_WIDTH;
-
-      const ax = from.x + nx;
-      const az = from.y + ny;
-      const bx = from.x - nx;
-      const bz = from.y - ny;
-      const cx = to.x + nx;
-      const cz = to.y + ny;
-      const ex = to.x - nx;
-      const ez = to.y - ny;
-
-      vertices[cursor] = ax; vertices[cursor + 1] = TETHER_LIFT; vertices[cursor + 2] = az;
-      vertices[cursor + 3] = bx; vertices[cursor + 4] = TETHER_LIFT; vertices[cursor + 5] = bz;
-      vertices[cursor + 6] = cx; vertices[cursor + 7] = TETHER_LIFT; vertices[cursor + 8] = cz;
-      vertices[cursor + 9] = bx; vertices[cursor + 10] = TETHER_LIFT; vertices[cursor + 11] = bz;
-      vertices[cursor + 12] = ex; vertices[cursor + 13] = TETHER_LIFT; vertices[cursor + 14] = ez;
-      vertices[cursor + 15] = cx; vertices[cursor + 16] = TETHER_LIFT; vertices[cursor + 17] = cz;
-      cursor += 18;
-    }
-
-    vertices.fill(0, cursor);
-    const attribute = this.tetherGeometry.getAttribute('position');
-    attribute.needsUpdate = true;
-    this.tetherGeometry.computeBoundingSphere();
-    mesh.visible = cursor > 0;
   }
 
   private readonly tick = (now: number): void => {
