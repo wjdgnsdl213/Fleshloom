@@ -16,12 +16,14 @@ import {
   HemisphereLight,
   Mesh,
   PlaneGeometry,
+  PointLight,
   Scene,
   type BufferGeometry,
 } from 'three';
 import type { WorldBounds } from '../../config/world';
 import {
   DISTRICT_BLOCKS,
+  DISTRICT_LIGHTS,
   DISTRICT_PUDDLES,
   DISTRICT_PROPS,
   type DistrictPropKind,
@@ -41,6 +43,24 @@ export const PROP_HEIGHTS: Readonly<Record<DistrictPropKind, number>> =
 
 const SHADOW_MAP_SIZE = 2_048;
 
+/**
+ * Quarantine lamp budget. The district authors far more lamps than a forward
+ * renderer can light in one pass, so a fixed pool is moved to whichever are
+ * nearest rather than one light created per authored lamp.
+ */
+const LAMP_BUDGET = 6;
+const LAMP_CULL_RADIUS = 900;
+const LAMP_HEIGHT = 150;
+const LAMP_COLOR = 0xffc27a;
+/**
+ * With decay 2 the illuminance a lamp delivers is intensity / distance², and
+ * the distances here are in world units of tens to hundreds. A lamp should
+ * lay down about half the key light's contribution at 150 units, which is
+ * this — not the six-figure number that reads plausible for metres.
+ */
+const LAMP_INTENSITY = 11_000;
+const LAMP_DECAY = 2;
+
 /** Ground clearance for flat decals, so they never z-fight the road. */
 const DECAL_LIFT = 0.6;
 
@@ -50,6 +70,8 @@ export class WorldStage {
 
   private readonly structures = new Group();
   private readonly decals = new Group();
+  private readonly lamps = new Group();
+  private readonly lampLights: PointLight[] = [];
   private readonly geometries: BufferGeometry[] = [];
 
   public constructor(bounds: WorldBounds) {
@@ -84,8 +106,40 @@ export class WorldStage {
 
     this.buildDecals();
     this.buildStructures();
+    this.buildLamps();
     this.scene.add(this.decals);
     this.scene.add(this.structures);
+    this.scene.add(this.lamps);
+  }
+
+  /**
+   * Lights the nearest few quarantine lamps and leaves the rest dark. The
+   * district authors far more lamps than a forward renderer can afford in one
+   * pass, and the ones off screen contribute nothing but shader cost.
+   */
+  public focusLights(centerX: number, centerZ: number): void {
+    const ranked = DISTRICT_LIGHTS.map((light, index) => ({
+      index,
+      light,
+      distance: Math.hypot(
+        light.position.x - centerX,
+        light.position.y - centerZ,
+      ),
+    })).sort((a, b) => a.distance - b.distance);
+
+    this.lampLights.forEach((lamp, slot) => {
+      const nearest = ranked[slot];
+      if (nearest === undefined || nearest.distance > LAMP_CULL_RADIUS) {
+        lamp.visible = false;
+        return;
+      }
+      lamp.visible = true;
+      lamp.position.set(
+        nearest.light.position.x,
+        LAMP_HEIGHT,
+        nearest.light.position.y,
+      );
+    });
   }
 
   /**
@@ -130,6 +184,22 @@ export class WorldStage {
   private own<T extends BufferGeometry>(geometry: T): T {
     this.geometries.push(geometry);
     return geometry;
+  }
+
+  private buildLamps(): void {
+    for (let slot = 0; slot < LAMP_BUDGET; slot += 1) {
+      // No shadow map on these: one shadow-casting key light is the budget,
+      // and a lamp that also casts would cost a cube render per frame.
+      const lamp = new PointLight(
+        LAMP_COLOR,
+        LAMP_INTENSITY,
+        LAMP_CULL_RADIUS,
+        LAMP_DECAY,
+      );
+      lamp.visible = false;
+      this.lampLights.push(lamp);
+      this.lamps.add(lamp);
+    }
   }
 
   private buildDecals(): void {

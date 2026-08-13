@@ -38,6 +38,7 @@ import { resolveStance } from './creatures/stance';
 import { SCENE_PALETTE, SHARED_MATERIALS, disposeSharedMaterials } from './materials';
 import { TetherMesh } from './TetherMesh';
 import { WardenMesh } from './WardenMesh';
+import { WeatherMesh } from './WeatherMesh';
 import { WorldStage } from './WorldStage';
 
 /** Hard ceiling on device pixel ratio; integrated GPUs cannot afford 3x. */
@@ -57,8 +58,14 @@ export class ThreeRendererHost implements RendererHost {
   private readonly projectilePool: Mesh[] = [];
   private lastElapsed = 0;
 
+  private readonly frameCosts = new Float64Array(120);
+  private frameCostCursor = 0;
+  private frameCostCount = 0;
+  private lastDrawStart = 0;
+
   private readonly tether = new TetherMesh();
   private readonly warden = new WardenMesh();
+  private readonly weather = new WeatherMesh();
 
   private hostElement: HTMLElement | null = null;
   private viewWidth = 1;
@@ -89,6 +96,7 @@ export class ThreeRendererHost implements RendererHost {
 
     this.stage.scene.add(this.tether.group);
     this.stage.scene.add(this.warden.group);
+    this.stage.scene.add(this.weather.group);
 
     host.appendChild(renderer.domElement);
     this.applyHostSize();
@@ -131,7 +139,14 @@ export class ThreeRendererHost implements RendererHost {
     this.syncProjectiles(state);
     this.tether.update(state);
     this.warden.update(state.warden, state.elapsed);
+    this.weather.update(
+      state.camera.x + state.camera.viewportWidth / 2,
+      state.camera.y + state.camera.viewportHeight / 2,
+      state.elapsed,
+      state.reducedMotion,
+    );
     renderer.render(stage.scene, this.camera);
+    this.recordFrameCost();
   }
 
   public async captureViewport(): Promise<string | null> {
@@ -172,6 +187,7 @@ export class ThreeRendererHost implements RendererHost {
 
     this.tether.dispose();
     this.warden.dispose();
+    this.weather.dispose();
 
     this.stage?.dispose();
     this.stage = null;
@@ -224,6 +240,7 @@ export class ThreeRendererHost implements RendererHost {
       framing.halfWidth,
       (framing.visibleGround.maxZ - framing.visibleGround.minZ) / 2,
     );
+    this.stage?.focusLights(framing.target.x, framing.target.z);
   }
 
   /**
@@ -370,6 +387,38 @@ export class ThreeRendererHost implements RendererHost {
         mesh.visible = false;
       }
     }
+  }
+
+  /**
+   * Rolling draw cost, exposed through the QA hook so a headless run can
+   * compare backends without a profiler attached.
+   */
+  private recordFrameCost(): void {
+    const now = performance.now();
+    if (this.lastDrawStart > 0) {
+      const cost = now - this.lastDrawStart;
+      this.frameCosts[this.frameCostCursor] = cost;
+      this.frameCostCursor = (this.frameCostCursor + 1) % this.frameCosts.length;
+      this.frameCostCount = Math.min(
+        this.frameCostCount + 1,
+        this.frameCosts.length,
+      );
+    }
+    this.lastDrawStart = now;
+  }
+
+  public frameCostMs(): { readonly mean: number; readonly worst: number } {
+    if (this.frameCostCount === 0) {
+      return { mean: 0, worst: 0 };
+    }
+    let total = 0;
+    let worst = 0;
+    for (let index = 0; index < this.frameCostCount; index += 1) {
+      const cost = this.frameCosts[index] ?? 0;
+      total += cost;
+      worst = Math.max(worst, cost);
+    }
+    return { mean: total / this.frameCostCount, worst };
   }
 
   private readonly tick = (now: number): void => {
