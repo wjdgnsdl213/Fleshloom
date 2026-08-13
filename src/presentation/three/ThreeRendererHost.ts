@@ -37,6 +37,7 @@ import { sampleGait, type GaitSample } from './creatures/gait';
 import { resolveStance } from './creatures/stance';
 import { SCENE_PALETTE, SHARED_MATERIALS, disposeSharedMaterials } from './materials';
 import { TetherMesh } from './TetherMesh';
+import { WardenMesh } from './WardenMesh';
 import { WorldStage } from './WorldStage';
 
 /** Hard ceiling on device pixel ratio; integrated GPUs cannot afford 3x. */
@@ -57,6 +58,7 @@ export class ThreeRendererHost implements RendererHost {
   private lastElapsed = 0;
 
   private readonly tether = new TetherMesh();
+  private readonly warden = new WardenMesh();
 
   private hostElement: HTMLElement | null = null;
   private viewWidth = 1;
@@ -86,6 +88,7 @@ export class ThreeRendererHost implements RendererHost {
     this.stage.scene.add(this.actors);
 
     this.stage.scene.add(this.tether.group);
+    this.stage.scene.add(this.warden.group);
 
     host.appendChild(renderer.domElement);
     this.applyHostSize();
@@ -127,6 +130,7 @@ export class ThreeRendererHost implements RendererHost {
     this.syncActors(state);
     this.syncProjectiles(state);
     this.tether.update(state);
+    this.warden.update(state.warden, state.elapsed);
     renderer.render(stage.scene, this.camera);
   }
 
@@ -167,6 +171,7 @@ export class ThreeRendererHost implements RendererHost {
     this.projectilePool.length = 0;
 
     this.tether.dispose();
+    this.warden.dispose();
 
     this.stage?.dispose();
     this.stage = null;
