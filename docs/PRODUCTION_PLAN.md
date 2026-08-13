@@ -233,3 +233,32 @@ Internal release target: 2026-08-25
 - Rebuilt Warden presentation as a grounded, nonrotating 2.5D anatomical boss with stage-specific arms/shell/core targets and segmented telegraphs.
 - Added deferred fixed-light 8-direction atlases for every late enemy family, plus a stable Warden frame, without increasing the 4.61MiB startup payload.
 - `npm run release:verify` passes 46 files/376 tests, build, 30 public files, and 19.15MiB total payload. Remaining release evidence is physical mobile, full-run audio, and deployment smoke testing.
+
+## P8 ??실시간 3D 전환 (2026-08-13)
+
+D-027 참조. 목표 이미지 정합을 위해 실시간 3D 백엔드를 추가했다.
+
+### 완료
+
+- 구조물 충돌 (D-028) ??사냥꾼과 적 4종 전부, 스폰 유효성 포함
+- `RendererHost` 시임 ??백엔드 2개 공존, 동적 임포트
+- Three.js 백엔드 ??직교 카메라 리그, 월드 지오메트리, 그림자, 비, 조명 컬링
+- 절차적 관절 크리처 7종 + 사냥꾼 ??보행, 전투 스탠스, 갑주 판
+- 살아있는 테더 + 0.82초 포획 비트, Warden 방사형 리그
+
+### 남은 것 (3D를 기본으로 올리기 전)
+
+우선순위 순.
+
+1. **지면 텍스처.** 현재 단색 아스팔트. 2D의 노면 디테일이 3D에 없다.
+   가장 큰 시각 격차다.
+2. **아키타입 색 분리.** 7종이 전부 같은 살빛이다. 2D는 종별 틴트가 있다.
+3. **웅덩이 반사.** 광택 하이라이트만 있고 배우를 비추지 않는다.
+   평면 반사 대신 반전 블롭(2D 컨셉 이식)이 통합 GPU에 맞다.
+4. **Warden 공격 텔레그래프.** 지오메트리는 그려지지만 예고 연출이 없다.
+5. **보행 튜닝.** 수학은 테스트로 고정됐지만 미학은 사람이 봐야 한다.
+
+### 예산
+
+`scripts/verify-release.mjs`가 청크별 gzip을 개별로 막는다.
+현재: boot 37.3 KiB / pixi 35.2 KiB / three 137.5 KiB. 시작 아트 4.61 MiB.

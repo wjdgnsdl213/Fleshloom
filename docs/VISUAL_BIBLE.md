@@ -166,3 +166,45 @@ Tall pieces belong in the perimeter band.
 - Warden reads through body volume first: a large grounded shell, segmented bone/tendon arcs, restrained arterial seams, and small stage-specific cyan control structures. Full bright circles are reserved for authoritative telegraph boundaries and must be segmented rather than reading as flat UI rings.
 - Capture closure is a short lethal seam, contraction preserves mass, decomposition retains target silhouettes, and exactly three heavy reward conduits terminate at Carrier before the arrival pulse.
 - The current desktop visual gate is GO. Do not trade this readability for full mesh simulation; physical mobile and full-run evidence are release QA, not reasons to change locked gameplay.
+
+## P8 ??3D 백엔드의 시각 언어 (2026-08-13)
+
+D-027로 실시간 3D 백엔드가 추가됐다. 2D 백엔드의 시각 규칙은 그대로 유지되며,
+아래는 3D 경로에만 적용된다.
+
+### 팔레트는 최종 픽셀값이 아니라 알베도다
+
+2D의 `GAMEPLAY_COLORS`는 화면에 찍히는 값 그 자체다. 3D에서 같은 값을 표준
+머티리얼에 넣으면 조명을 곱한 뒤 거의 검정이 된다. `three/materials.ts`의
+`SCENE_PALETTE`는 알베도이며, 리그의 키+반구 조명에서 위를 향한 면의 게인이
+약 1.0이 되도록 맞춰져 있다. 그래서 지면은 2D 톤 근처에 앉고, 2D 아트에서
+"밝게 칠해진 윗면"(바리케이드 상단, 밴 지붕)은 알베도를 올려 조명이 밝기를
+벌어가게 한다. 발광색과 신호색(arterial, amber, hostileCyan)은 표면이 아니라
+빛으로 읽히므로 2D와 동일하다.
+
+### 깊이는 렌즈가 아니라 기울기·그림자·가림에서 온다
+
+카메라는 직교다(D-027). 원근 발산이 없으므로 깊이는 55° 기울기, 그림자,
+서로 가리는 실루엣, 그리고 사지가 움직이며 바뀌는 윤곽에서 나온다.
+
+### 거리 안개를 쓰지 않는다
+
+직교 카메라에서 눈까지의 거리는 씬 안쪽 깊이가 아니라 화면 행을 따라 변한다.
+three의 `Fog`를 켜면 공기가 두꺼워지는 대신 화면 중앙에 수평 띠가 그어진다.
+밤의 깊이는 조명 감쇠로 만든다.
+
+### 조명
+
+- 키 라이트 1개(방향광, 2048² PCF). 방향은 2D의 `SCENE_SHADOW_DIRECTION`과
+  동일하므로 두 백엔드의 그림자가 같은 쪽으로 진다. 프러스텀은 카메라가 보는
+  범위를 따라 좁게 유지한다.
+- 반구광이 채움. 그림자 안쪽이 완전히 죽지 않을 만큼만.
+- 방역등은 가장 가까운 6개만 포인트 라이트. 그림자는 던지지 않는다.
+  decay 2에서 조도는 intensity/거리²이고 거리 단위는 월드 유닛이다.
+
+### 크리처
+
+절차적 관절 리그. 몸통 + 머리 + 2본 사지 4개, 코사인법칙 해석해. 스키닝 없음.
+리그 치수는 충돌 반지름 단위로 작성하고 `visualScale`로 화면 크기를 맞춘다.
+충돌 반지름은 몸보다 훨씬 작기 때문에(2D도 약 5.7배로 그린다), 1:1로 스케일하면
+자갈처럼 보인다. 무릎은 뒤로 꺾인다 ??2D 실루엣이 이미 그렇게 읽힌다.

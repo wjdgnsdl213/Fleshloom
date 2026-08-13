@@ -79,3 +79,35 @@
 | 2026-08-13 | 작업 트리 | Chrome 390×844 | P7-5 simulated touch layout GO | `references/qa/2026-08-13-p7-5-active-tether-touch-390x844.png`; 분할 이동/LOOP 입력으로 이동을 유지한 활성 테더 확인. 물리 coarse-pointer 기기 검증은 대기 |
 | 2026-08-13 | 작업 트리 | Chrome 1920×1080 | P7-6/P7-8 desktop visual GO | `references/qa/2026-08-13-p7-6-*`, `p7-7-*`, `p7-8-*`; closure/intake/3-depth gate 독립 GO, Warden 단계·전체 적 고정광 갤러리 확인 |
 | 2026-08-13 | 작업 트리 | Chrome 390×844 | 선택/결과 레이아웃 GO | P7-6 변이·임프린트·Warden core·승리 화면 잘림/겹침 없음. 물리 coarse-pointer 연속 closure는 대기 |
+## P8 ??3D 백엔드 체크리스트 (2026-08-13)
+
+`?renderer=three`로 확인한다. 기본은 `pixi`이므로 이 항목들은 기본 경로에
+영향을 주지 않는다.
+
+### 자동으로 막혀 있는 것 (테스트가 지킨다)
+
+- 카메라 프레이밍: 390x844 ~ 2560x1440 전 구간에서 2D 수평 프레임과 정확히
+  일치하고, 세로 오버스캔이 `spawnCameraMargin`(120) 미만 ??`CameraRig.test.ts`
+- 보행: 다리 역위상, 팔은 같은 쪽 다리와 역위상, 발이 지면 아래로 내려가지
+  않음, 접지한 발이 뒤로 밀며 추진, 스트라이드 전 구간 IK 무클램프
+  ??`creatureGait.test.ts`
+- 스탠스: 텔레그래프와 돌진이 서로 반대 방향, 경직이 자체 타이머로 서서히
+  풀림, 어떤 스탠스에서도 사지가 클램프되지 않음 ??`creatureStance.test.ts`
+- 포획 비트: 4단계 순서, 고리와 사체가 다시 커지지 않음, 끝나면 화면에 아무것도
+  남지 않음, reducedFlash가 안무를 건드리지 않고 섬광만 줄임
+  ??`CaptureBeat.test.ts`
+- 비: elapsed의 순수 함수라 프레임 유실에도 어긋나지 않음, reducedMotion에서
+  사라지지 않고 정지함 ??`WeatherMesh.test.ts`
+- 청크 예산: boot / pixi / three 각각 gzip 개별 게이트 ??`verify-release.mjs`
+
+### 사람이 봐야 하는 것
+
+- [ ] 9개 QA 씬 (`?qaScene=`) 콘솔 오류 없음
+- [ ] 걸음걸이가 자연스러운가 ??팔 스윙 폭, 보폭, 상체 흔들림
+- [ ] 7종 적 실루엣이 한눈에 구분되는가
+- [ ] 사냥꾼이 구조물을 통과하지 않는가, 스치며 지나갈 때 걸리적거리지 않는가
+- [ ] 고리를 그리고 닫을 때 테더가 읽히는가
+- [ ] Warden 4단계가 각각 다르게 보이는가
+- [ ] 390x844 모바일에서 플레이 가능한가
+- [ ] reducedMotion / reducedFlash를 켜고 위 항목이 모두 유지되는가
+- [ ] 10-12분 완주 중 프레임이 무너지지 않는가

@@ -189,3 +189,23 @@ Only behavior-changing decisions belong here. Add a new entry instead of rewriti
 - Rules: props and blocks remain visual landmarks only. They add no collision, capture membership, rewards, or path constraints, preserving D-019 and D-025.
 - Budget: the two directional startup atlases total about 0.65MiB. Environment props load after the canvas attaches; the release verifier remains the authority for the 6MiB startup gate.
 - Reason: fixed-light directional renders and footpoint sorting remove the rotating-decal and fixed-stack reads without moving simulation into Pixi or adding a runtime 3D dependency.
+## D-027 - The game renders in real-time 3D behind a flag
+
+- Date: 2026-08-13
+- Status: accepted, default renderer unchanged pending owner review
+- Decision: a three.js backend renders the hunt in real-time 3D. It lives behind `?renderer=three`; `DEFAULT_RENDERER` in `src/app/rendererSelection.ts` stays `pixi` until the owner flips it after review. Both backends implement `RendererHost` and consume the same `PlaygroundRenderState`, so the simulation is unaware of which one is drawing.
+- Reason: D-024 through D-026 reduced the flat read without removing it, and the owner's judgement after the P7-5 prerender pass was that the gap to the completion target remained too large. Baked lighting cannot follow a body that turns, and a prerendered sheet cannot show a limb move. Both fall out of real 3D for free.
+- Camera: orthographic, pitched 55 degrees, framed from the existing Camera2D snapshot. This replaces the long-lens perspective the plan sketched. A tilted perspective camera cannot hold the 2D framing - rows nearer the eye show less world than rows further away - so the viewport rect is either clipped at the bottom corners or leaks past `spawnCameraMargin` at the top, by 171 world units against a 120 unit budget at 1080p. Orthographic matches the 2D horizontal framing exactly at every row and leaves only the foreshortening the tilt exists to produce, which is bounded and tested from 390x844 to 2560x1440. Because the framing is derived rather than tuned, the dead zone, the world clamp, the spawn margin, and the screen-space touch joystick all keep working unchanged.
+- Creatures: procedural articulated rigs, not imported skeletons. A torso, a head, and four two-bone limbs solved analytically with the law of cosines. No skinning - at gameplay scale, chained capsules read as articulation. Gait phase is rebuilt continuously from the same `distancePerFrame` the 2D sprite sheets are cut on, so stride length still matches travel speed.
+- Rules: nothing here reads or changes a rule. Stance is a pure function of the behaviour string the simulation already publishes. The capture beat reads the authored 0.82s duration. Toggle remains the default loop input, Hold remains the identical-rules accessibility alternative, the living loop remains the only lethal action, imprints still require an explicit keep or replace, XP mutations stay run-permanent, and Fourfold Hunt stays a late-run Apex.
+- Budget: the three chunk is dynamically imported, so the Pixi path pays nothing for it. It is about 142 KiB gzipped; `scripts/verify-release.mjs` now gates it.
+- Boundary: the 3D backend is not yet at parity. It has no ground texture, no puddle reflections of actors, and no per-archetype colour separation, and the Warden has no attack telegraph geometry of its own. The Pixi backend remains the shipping default until those close.
+
+## D-028 - Street structures stop being walk-through
+
+- Date: 2026-08-13
+- Status: accepted
+- Decision: every raised street structure contributes one oriented-box footprint that bodies collide with, in `src/content/quarantineColliders.ts`. Resolution is circle-vs-OBB push-out preserving tangential slide, two relaxation passes, in `src/core/geometry/collision.ts`. It applies to the hunter and to all four enemy models, and wave spawns reject positions inside a collider.
+- Reason: the owner reported actors walking through the barricades and vans. D-025 and D-026 had declared street objects presentation-only, which this reverses on the owner's decision.
+- Footprints: authored at roughly 0.85x the visual silhouette, so brushing past a prop feels forgiving and the central loop-making lane stays open.
+- Rules: the living tether and the capture polygon deliberately ignore these colliders. Debris is low, the loop passes over it, and no locked capture rule changes. The Warden body is excluded from collision.

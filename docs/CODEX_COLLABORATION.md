@@ -240,3 +240,53 @@ Open risks / decisions requested:
 - Read-only review found one executable rotating-decal fallback after an armored Drifter lost its shell.
 - Exposed armored Drifters now select the ordinary fixed-light directional atlas while preserving the existing arterial exposed tint and all peel/capture/reward rules.
 - A pure regression test pins armored→exposed family selection and zero bitmap rotation; runtime evidence is `references/qa/2026-08-13-p7-9-exposed-armored-directional-1920x1080.png`.
+
+## P8 ??실시간 3D 전환 (2026-08-13, Claude Code 단독 세션)
+
+소유자 지시: 자는 동안 구현→검증을 자동 반복하여 완성 목표 이미지에 근접시킬 것.
+게임을 3D로, 이동 시 팔·다리 관절 모션을, 구조물 통과 버그를 수정할 것.
+합의 사항: main 직접 커밋+푸시, 3D는 플래그 뒤에 두고 아침 검토, 단일 오케스트레이터.
+
+### 결과
+
+10개 마일스톤 전부 완료. 테스트 376개 → 502개. `release:verify` 통과.
+기본 렌더러는 약속대로 `pixi` 유지.
+
+### 계획 대비 바뀐 것
+
+- **원근 → 직교 카메라.** 기울어진 원근 카메라는 2D 프레이밍을 유지할 수 없다.
+  가까운 행이 먼 행보다 좁은 월드를 보여주므로 하단 모서리가 잘리거나 상단이
+  스폰 마진을 넘어 샌다(1080p에서 120 예산 대비 171 월드 유닛). 직교는 모든
+  행에서 수평 프레임이 정확히 일치한다. D-027에 기록.
+- **피치 60° → 55°.** 수직 길이가 cos(피치)로 투영되므로 카메라가 누울수록
+  크리처가 커진다. 55°는 스폰 마진이 허용하는 한계다.
+
+### 코드가 아니라 캡처가 잡은 결함 (계획에 없던 것)
+
+1. 직교 카메라에서 three의 거리 안개는 화면 Y축 그라데이션이 되어 화면 중앙에
+   수평 띠를 그린다. 안개를 제거하고 조명 감쇠로 대체.
+2. 환경맵 없는 metalness 웅덩이는 반사할 것이 없어 도로에 뚫린 검은 구멍으로
+   렌더된다. 유전체에 가깝게 낮춤.
+3. **다리가 골반 높이보다 짧아 IK가 클램프되고 발이 공중에 떴다.** 사용자가
+   지적한 "스티커" 느낌의 직접 원인. 이제 "모든 사지는 자기 스트라이드보다
+   길어야 한다"가 테스트다.
+4. 그림자 포커스에 카메라 피치 60°가 하드코딩.
+5. Warden 팔을 손으로 쓴 오일러 3원소로 조준해 본체 안에 묻혔다. 쿼터니언으로
+   교체.
+6. Warden 판을 월드 위치에서 배치했는데, 중심과 겹치는 위치는 각도가 없어 모든
+   판이 한 방향에 쌓였다. 스냅샷이 이미 주는 side/index로 교체.
+7. Warden 코어가 본체 중간 높이에 있어 돔 안에 묻혔다 ??엔드게임의 주인공이
+   전혀 렌더되지 않았다.
+8. 방역등을 6자리 intensity로 설정. 거리가 미터일 때 그럴듯한 숫자지만 여기는
+   월드 유닛 수십~수백이고 decay 2에서 조도는 intensity/거리²다. 화면이 백색으로
+   날아갔다.
+
+### 검증 방법
+
+각 마일스톤: `npm run check` → dev 서버 + chrome-headless-shell(SwiftShader)
+스크린샷 → 오케스트레이터가 이미지 직접 판독 → 커밋 → push.
+헤드리스 캡처는 SwiftShader 컴포지터가 게임 루프에 포화되어 프레임을 내주지
+못하므로, dev 전용 `window.__fleshloomQa.screenshot()` 훅으로 우회한다.
+M7에서는 CDP로 실제 키보드 입력을 주입해 사냥꾼이 고리를 그리게 했다.
+그 과정에서 PowerShell 인자 인용이 JS를 훼손하는 것을 발견해 드라이버에
+`--evalfile`을 추가했다.

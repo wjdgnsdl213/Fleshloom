@@ -29,8 +29,11 @@ If code and documentation disagree, stop and surface the mismatch. Do not silent
 
 ## Technical boundaries
 
-- TypeScript, Vite, PixiJS 8, Vitest.
-- Keep simulation and game rules independent from Pixi display objects. Pure geometry/progression code belongs under `src/core` or `src/game`; rendering belongs under `src/presentation`.
+- TypeScript, Vite, Vitest. Two rendering backends: PixiJS 8 (2D, the default) and three.js (real-time 3D, behind `?renderer=three`). See D-027.
+- Keep simulation and game rules independent from any renderer. Pure geometry/progression code belongs under `src/core` or `src/game`; rendering belongs under `src/presentation`.
+- A renderer talks to the simulation through exactly one contract: `RendererHost` (`src/presentation/RendererHost.ts`), fed one `PlaygroundRenderState` per frame. `GameApp` must never import a backend, and neither backend may read or change a rule. Backend-specific code lives under `src/presentation/pixi/` or `src/presentation/three/`; anything both backends need is a plain module directly under `src/presentation`.
+- Backends are dynamically imported, so a player downloads one of them, never both. `scripts/verify-release.mjs` gates each chunk's gzipped size on its own.
+- `src/core` imports only from `src/core`. Where a core module needs a shape that config already declares, restate it structurally rather than importing config.
 - Prefer data-driven content under `src/content` as it is introduced. Do not bury balance values in renderers.
 - Use typed intent and event boundaries when systems begin communicating. Avoid a global mutable event dump.
 - Avoid a heavyweight physics dependency unless a measured problem justifies it.

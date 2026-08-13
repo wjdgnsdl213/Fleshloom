@@ -5,7 +5,8 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 const projectRoot = process.cwd();
 const publicRoot = join(projectRoot, 'public');
@@ -113,6 +114,41 @@ if (startupBytes > startupBudgetBytes) {
   );
 }
 
+// Script budgets. The renderer backends are dynamically imported, so a player
+// only ever downloads one of them; each is gated on its own rather than on
+// their sum, and the boot chunk is gated separately so a backend growing
+// cannot quietly be paid for out of startup.
+const scriptBudgets = [
+  { label: 'boot', match: /^index-[\w-]+\.js$/, gzipBudgetBytes: 64 * 1024 },
+  {
+    label: 'pixi backend',
+    match: /^PixiRendererHost-[\w-]+\.js$/,
+    gzipBudgetBytes: 56 * 1024,
+  },
+  {
+    label: 'three backend',
+    match: /^ThreeRendererHost-[\w-]+\.js$/,
+    gzipBudgetBytes: 176 * 1024,
+  },
+];
+
+const assetFiles = filesBelow(join(distRoot, 'assets'));
+const scriptReport = [];
+for (const budget of scriptBudgets) {
+  const match = assetFiles.find((path) => budget.match.test(basename(path)));
+  if (match === undefined) {
+    fail(`no built chunk matched the ${budget.label} budget`);
+  }
+  const gzipBytes = gzipSync(readFileSync(match)).length;
+  if (gzipBytes > budget.gzipBudgetBytes) {
+    fail(
+      `${budget.label} is ${(gzipBytes / 1024).toFixed(1)} KiB gzipped; ` +
+        `budget is ${(budget.gzipBudgetBytes / 1024).toFixed(1)} KiB`,
+    );
+  }
+  scriptReport.push(`${budget.label} ${(gzipBytes / 1024).toFixed(1)} KiB`);
+}
+
 const publicBytes = publicFiles.reduce(
   (total, path) => total + statSync(path).size,
   0,
@@ -121,5 +157,6 @@ console.log(
   `[release] verified ${publicFiles.length} public files, ` +
     `${localReferences.length} index references, ` +
     `${(startupBytes / 1024 / 1024).toFixed(2)} MiB startup art, ` +
-    `${(publicBytes / 1024 / 1024).toFixed(2)} MiB total public payload.`,
+    `${(publicBytes / 1024 / 1024).toFixed(2)} MiB total public payload, ` +
+    `gzipped ${scriptReport.join(', ')}.`,
 );
