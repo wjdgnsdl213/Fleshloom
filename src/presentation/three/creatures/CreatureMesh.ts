@@ -34,6 +34,8 @@ export interface LimbParts {
 export interface CreatureParts {
   readonly root: Group;
   readonly body: Group;
+  /** Carapace, hidden once the loop has peeled it off. */
+  readonly plating: Group;
   readonly limbs: readonly LimbParts[];
   readonly geometries: readonly BufferGeometry[];
 }
@@ -93,6 +95,8 @@ export function buildCreature(
   head.castShadow = true;
   body.add(head);
 
+  const plateGroup = new Group();
+  body.add(plateGroup);
   for (const plate of rig.plates ?? []) {
     const mesh = new Mesh(
       own(new BoxGeometry(plate.width, plate.height, plate.depth)),
@@ -102,7 +106,7 @@ export function buildCreature(
     mesh.rotation.x = plate.pitch;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    body.add(mesh);
+    plateGroup.add(mesh);
   }
 
   const limbs: LimbParts[] = [];
@@ -143,5 +147,5 @@ export function buildCreature(
     limbs.push({ spec, upper, lower });
   }
 
-  return { root, body, limbs, geometries };
+  return { root, body, plating: plateGroup, limbs, geometries };
 }

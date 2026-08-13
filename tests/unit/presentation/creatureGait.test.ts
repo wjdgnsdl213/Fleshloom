@@ -313,10 +313,9 @@ describe('rigFor', () => {
     expect(rigFor('hunter')).toBe(HUNTER_RIG);
   });
 
-  it('falls back to the drifter frame for archetypes still to come', () => {
-    for (const archetype of ['rusher', 'watcher', 'cutter', 'mimic', 'elite-husk']) {
-      expect(rigFor(archetype)).toBe(DRIFTER_RIG);
-    }
+  it('falls back to the drifter frame for an archetype it has never heard of', () => {
+    expect(rigFor('')).toBe(DRIFTER_RIG);
+    expect(rigFor('not-an-archetype')).toBe(DRIFTER_RIG);
   });
 
   it('every rig carries a matched pair of legs and arms', () => {

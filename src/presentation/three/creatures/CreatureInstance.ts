@@ -12,6 +12,7 @@ import { buildCreature, type CreatureParts } from './CreatureMesh';
 import { restDropFor, type CreatureRig } from './RigTypes';
 import { bodyBob, type GaitSample } from './gait';
 import { poseLimb } from './pose';
+import { NEUTRAL_STANCE, type Stance } from './stance';
 
 export class CreatureInstance {
   public readonly root: Group;
@@ -32,6 +33,7 @@ export class CreatureInstance {
     facing: Vec2,
     radius: number,
     gait: GaitSample,
+    stance: Stance = NEUTRAL_STANCE,
   ): void {
     const rig = this.rig;
     const root = this.root;
@@ -42,25 +44,48 @@ export class CreatureInstance {
       root.rotation.y = Math.atan2(facing.x, facing.y);
     }
 
-    const bob = bodyBob(gait, rig.bob);
-    this.parts.body.position.y = rig.bodyHeight + bob;
+    // The stance damps the stride rather than replacing it, so a creature can
+    // wind up an attack without its legs freezing mid-step.
+    const damped: GaitSample =
+      stance.gaitDamping === 1
+        ? gait
+        : {
+            phase: gait.phase,
+            moving: gait.moving,
+            amplitude: gait.amplitude * stance.gaitDamping,
+          };
+
+    const crouch = rig.bodyHeight * stance.crouch;
+    const bob = bodyBob(damped, rig.bob);
+    const bodyLift = bob - crouch;
+
+    this.parts.body.position.y = rig.bodyHeight + bodyLift;
+    this.parts.body.rotation.x = rig.bodyPitch + stance.pitch;
 
     for (const limb of this.parts.limbs) {
-      // A leg's socket rides up with the bob, so the ground it is reaching for
-      // is that much further away. Without this the bob would lift the feet
-      // off the road instead of coming from the legs extending.
+      // A leg's socket rides with the body, so the ground it is reaching for
+      // moves with it. Without this the bob would lift the feet off the road
+      // instead of coming from the legs extending, and a crouch would drive
+      // them through it.
       const isLeg = limb.spec.kind === 'leg';
       if (isLeg) {
-        limb.upper.position.y = rig.bodyHeight + limb.spec.socket.y + bob;
+        limb.upper.position.y =
+          rig.bodyHeight + limb.spec.socket.y + bodyLift;
       }
-      const restDrop = restDropFor(rig, limb.spec) + (isLeg ? bob : 0);
-      const pose = poseLimb(limb.spec, gait, restDrop);
+      const restDrop = restDropFor(rig, limb.spec) + (isLeg ? bodyLift : 0);
+      const pose = poseLimb(limb.spec, damped, restDrop);
 
       // Groups rotate about X with -Y as down, so a positive forward swing is
       // a negative rotation.
-      limb.upper.rotation.x = -pose.upperAngle;
+      limb.upper.rotation.x =
+        -pose.upperAngle - (isLeg ? 0 : stance.armLift);
       limb.lower.rotation.x = -pose.bend;
     }
+  }
+
+  /** Hides the carapace once the loop has peeled it off. */
+  public setArmored(armored: boolean): void {
+    this.parts.plating.visible = armored;
   }
 
   public setVisible(visible: boolean): void {

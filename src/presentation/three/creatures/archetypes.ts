@@ -147,13 +147,173 @@ export const DRIFTER_RIG: CreatureRig = Object.freeze({
   ]),
 });
 
+// A sprinter: long legs, deep forward lean, arms tucked back out of the way.
+const RUSHER_LEG = leg('leg-r', 0.34, 0, 1.52, 1.46, 0.2, 1.34, 0.56);
+const RUSHER_ARM = arm('arm-r', 0.56, 0.58, 0.68, 0.72, 0.14, 0.5);
+
+export const RUSHER_RIG: CreatureRig = Object.freeze({
+  archetype: 'rusher',
+  visualScale: VISUAL_SCALE,
+  bodyRadius: 0.44,
+  bodyLength: 1.24,
+  bodyHeight: 2.45,
+  bodyPitch: 0.62,
+  headRadius: 0.32,
+  headOffset: Object.freeze({ x: 0, y: 0.6, z: 0.86 }),
+  bob: 0.24,
+  limbs: Object.freeze([
+    RUSHER_LEG,
+    mirrorLimb(RUSHER_LEG, 'leg-l'),
+    RUSHER_ARM,
+    mirrorLimb(RUSHER_ARM, 'arm-l'),
+  ]),
+});
+
+// A sentry: upright, stilt-legged, head held high. It positions rather than
+// charges, so it takes short steps and barely leans.
+const WATCHER_LEG = leg('leg-r', 0.3, 0, 1.72, 1.66, 0.14, 0.7, 0.3);
+const WATCHER_ARM = arm('arm-r', 0.44, 0.86, 1.06, 1.02, 0.11, 0.42);
+
+export const WATCHER_RIG: CreatureRig = Object.freeze({
+  archetype: 'watcher',
+  visualScale: VISUAL_SCALE,
+  bodyRadius: 0.38,
+  bodyLength: 1.16,
+  bodyHeight: 3.15,
+  bodyPitch: 0.05,
+  headRadius: 0.34,
+  headOffset: Object.freeze({ x: 0, y: 1.02, z: 0.16 }),
+  bob: 0.1,
+  limbs: Object.freeze([
+    WATCHER_LEG,
+    mirrorLimb(WATCHER_LEG, 'leg-l'),
+    WATCHER_ARM,
+    mirrorLimb(WATCHER_ARM, 'arm-l'),
+  ]),
+  plates: Object.freeze([
+    Object.freeze({
+      offset: Object.freeze({ x: 0, y: 0.72, z: 0.1 }),
+      width: 0.96,
+      height: 0.2,
+      depth: 0.72,
+      pitch: 0.1,
+    }),
+  ]),
+});
+
+// Blades for forearms: the lower arm bone is long, thin, and swings wide.
+const CUTTER_LEG = leg('leg-r', 0.36, 0, 1.36, 1.3, 0.18, 1.0, 0.44);
+const CUTTER_ARM = arm('arm-r', 0.62, 0.7, 0.82, 1.34, 0.12, 1.06);
+
+export const CUTTER_RIG: CreatureRig = Object.freeze({
+  archetype: 'cutter',
+  visualScale: VISUAL_SCALE,
+  bodyRadius: 0.46,
+  bodyLength: 1.1,
+  bodyHeight: 2.55,
+  bodyPitch: 0.36,
+  headRadius: 0.3,
+  headOffset: Object.freeze({ x: 0, y: 0.7, z: 0.66 }),
+  bob: 0.18,
+  limbs: Object.freeze([
+    CUTTER_LEG,
+    mirrorLimb(CUTTER_LEG, 'leg-l'),
+    CUTTER_ARM,
+    mirrorLimb(CUTTER_ARM, 'arm-l'),
+  ]),
+});
+
+// Wears the hunter's proportions on purpose — that is the whole threat — but
+// walks with a longer, looser stride, which is the tell.
+const MIMIC_LEG = leg('leg-r', 0.42, 0, 1.34, 1.28, 0.23, 1.12, 0.46);
+const MIMIC_ARM = arm('arm-r', 0.66, 0.62, 0.84, 0.8, 0.17, 0.86);
+
+export const MIMIC_RIG: CreatureRig = Object.freeze({
+  archetype: 'mimic',
+  visualScale: VISUAL_SCALE,
+  bodyRadius: 0.6,
+  bodyLength: 1.15,
+  bodyHeight: 2.38,
+  bodyPitch: 0.26,
+  headRadius: 0.38,
+  headOffset: Object.freeze({ x: 0, y: 0.74, z: 0.56 }),
+  bob: 0.19,
+  limbs: Object.freeze([
+    MIMIC_LEG,
+    mirrorLimb(MIMIC_LEG, 'leg-l'),
+    MIMIC_ARM,
+    mirrorLimb(MIMIC_ARM, 'arm-l'),
+  ]),
+});
+
+// Slow, broad, and plated. The plates are what the loop has to peel off, so
+// they are the loudest thing in the silhouette.
+const HUSK_LEG = leg('leg-r', 0.66, 0, 1.22, 1.16, 0.38, 0.66, 0.26);
+const HUSK_ARM = arm('arm-r', 0.92, 0.42, 0.94, 0.98, 0.3, 0.5);
+
+export const ELITE_HUSK_RIG: CreatureRig = Object.freeze({
+  archetype: 'elite-husk',
+  // The husk already carries the largest collision radius in the game, so the
+  // shared visual multiplier stacks on top of a body that is big to begin
+  // with and it swamps the frame. It should read as the heaviest thing on
+  // screen, not as three of everything else.
+  visualScale: 1.32,
+  bodyRadius: 0.86,
+  bodyLength: 1.4,
+  bodyHeight: 2.1,
+  bodyPitch: 0.4,
+  headRadius: 0.36,
+  headOffset: Object.freeze({ x: 0, y: 0.66, z: 0.76 }),
+  bob: 0.09,
+  limbs: Object.freeze([
+    HUSK_LEG,
+    mirrorLimb(HUSK_LEG, 'leg-l'),
+    HUSK_ARM,
+    mirrorLimb(HUSK_ARM, 'arm-l'),
+  ]),
+  // Plates hug the back rather than jutting past the silhouette; a slab wider
+  // than the body it sits on reads as a signboard, not a carapace.
+  plates: Object.freeze([
+    Object.freeze({
+      offset: Object.freeze({ x: 0, y: 0.6, z: -0.12 }),
+      width: 1.38,
+      height: 0.26,
+      depth: 1.24,
+      pitch: 0.4,
+    }),
+    Object.freeze({
+      offset: Object.freeze({ x: 0, y: 0.3, z: 0.72 }),
+      width: 1.02,
+      height: 0.24,
+      depth: 0.62,
+      pitch: 0.72,
+    }),
+    Object.freeze({
+      offset: Object.freeze({ x: 0, y: -0.32, z: 0.42 }),
+      width: 1.16,
+      height: 0.2,
+      depth: 0.7,
+      pitch: 0.2,
+    }),
+  ]),
+});
+
 const RIGS: Readonly<Record<string, CreatureRig>> = Object.freeze({
   hunter: HUNTER_RIG,
   carrier: CARRIER_RIG,
   drifter: DRIFTER_RIG,
+  rusher: RUSHER_RIG,
+  watcher: WATCHER_RIG,
+  cutter: CUTTER_RIG,
+  mimic: MIMIC_RIG,
+  'elite-husk': ELITE_HUSK_RIG,
 });
 
-/** Wave one ships three rigs; everything else walks on the drifter frame. */
+/** Every archetype now has its own frame; the drifter is the last resort. */
 export function rigFor(archetype: string): CreatureRig {
   return RIGS[archetype] ?? DRIFTER_RIG;
 }
+
+export const ALL_RIGS: readonly CreatureRig[] = Object.freeze(
+  Object.values(RIGS),
+);

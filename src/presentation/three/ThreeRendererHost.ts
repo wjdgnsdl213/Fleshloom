@@ -38,6 +38,7 @@ import { resolveCameraFraming } from './CameraRig';
 import { rigFor } from './creatures/archetypes';
 import { CreatureInstance } from './creatures/CreatureInstance';
 import { sampleGait, type GaitSample } from './creatures/gait';
+import { resolveStance } from './creatures/stance';
 import { SCENE_PALETTE, SHARED_MATERIALS, disposeSharedMaterials } from './materials';
 import { WorldStage } from './WorldStage';
 
@@ -331,11 +332,13 @@ export class ThreeRendererHost implements RendererHost {
       const tuning =
         WALK_CYCLE_TUNING[enemy.archetype as keyof typeof WALK_CYCLE_TUNING] ??
         WALK_CYCLE_TUNING.drifter;
+      creature.setArmored(enemy.armored !== false);
       creature.update(
         enemy.position,
         enemy.facing,
         enemy.radius,
         this.advanceGait(enemy.id, speed, deltaSeconds, tuning),
+        resolveStance(enemy.behaviorState, enemy.staggerRemaining),
       );
     }
 
